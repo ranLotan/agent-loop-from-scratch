@@ -1,0 +1,5 @@
+node_modules/
+.env
+# Personal financial data — never commit
+data/transactions/
+data/reports/
