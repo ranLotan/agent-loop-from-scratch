@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Monthly Visa Cal expense report with rule-based categorization (and, later, an agent).",
   "scripts": {
+    "fetch": "tsx src/cli.ts fetch",
     "import": "tsx src/cli.ts import",
     "report": "tsx src/cli.ts report",
     "annual": "tsx src/cli.ts annual",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "csv-parse": "^7.0.3",
+    "israeli-bank-scrapers": "^6.12.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {

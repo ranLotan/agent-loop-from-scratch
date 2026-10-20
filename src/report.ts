@@ -1,4 +1,5 @@
-import type { CategorizedTransaction } from "./types";
+import { round2 } from "./normalize";
+import type { CategorizedTransaction, Transaction } from "./types";
 
 export const UNCATEGORIZED = "Uncategorized";
 
@@ -21,9 +22,8 @@ export interface Summary {
 }
 
 const CURRENCY_ORDER = ["ILS", "EUR", "USD"];
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
-function groupBy(transactions: CategorizedTransaction[], key: (t: CategorizedTransaction) => string) {
+function groupBy<T extends Transaction>(transactions: T[], key: (t: T) => string) {
   const groups = new Map<string, Group>();
   for (const t of transactions) {
     const g = groups.get(key(t)) ?? { totals: {}, count: 0 };
@@ -33,6 +33,10 @@ function groupBy(transactions: CategorizedTransaction[], key: (t: CategorizedTra
   }
   for (const g of groups.values()) for (const c in g.totals) g.totals[c] = round2(g.totals[c]);
   return groups;
+}
+
+export function totalsByCurrency(transactions: Transaction[]): Totals {
+  return groupBy(transactions, () => "all").get("all")?.totals ?? {};
 }
 
 /** All the report math, separated from formatting so it's easy to test and reuse. */

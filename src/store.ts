@@ -35,6 +35,15 @@ export function listMonths(year: string): string[] {
     .sort();
 }
 
+/** The untouched scraper output, for debugging the mapping. Gitignored. */
+export const rawPath = (name: string) => join(DATA_DIR, "raw", name);
+
+export function saveRaw(name: string, data: unknown): string {
+  const path = rawPath(name);
+  writeFile(path, JSON.stringify(data, null, 2) + "\n");
+  return path;
+}
+
 export function loadRules(): RulesFile {
   return JSON.parse(readFileSync(join(DATA_DIR, "rules.json"), "utf8"));
 }

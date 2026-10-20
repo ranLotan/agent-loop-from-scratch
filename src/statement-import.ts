@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
+import { assignIds, CURRENCY_SYMBOLS } from "./normalize";
 import type { Transaction } from "./types";
 
 /**
@@ -22,8 +22,6 @@ const COLUMN_ALIASES = {
 };
 type Field = keyof typeof COLUMN_ALIASES;
 type ColumnMap = Partial<Record<Field, number>>;
-
-const CURRENCY_SYMBOLS: Record<string, string> = { "₪": "ILS", "$": "USD", "€": "EUR", "£": "GBP" };
 
 export interface ParsedStatement {
   transactions: Transaction[];
@@ -165,9 +163,8 @@ function parseSectionTotal(text: string) {
  * then USD/EUR immediate debits), each with a title line (holding a total) and its own header row.
  */
 export function parseStatement(rows: string[][], source: Transaction["source"]): ParsedStatement {
-  const transactions: Transaction[] = [];
+  const parsed: Omit<Transaction, "id">[] = [];
   const checks: ParsedStatement["checks"] = [];
-  const seen = new Map<string, number>();
   let billingDate: string | undefined;
   let skipped = 0;
 
@@ -198,12 +195,7 @@ export function parseStatement(rows: string[][], source: Transaction["source"]):
 
     const tx = section && parseRow(row, section.columns, source);
     if (section && tx) {
-      // Same date+merchant+amount twice is legit (two coffees), so number the repeats.
-      const key = `${tx.date}|${tx.merchant}|${tx.amount}|${tx.currency}`;
-      const occurrence = (seen.get(key) ?? 0) + 1;
-      seen.set(key, occurrence);
-      const id = createHash("sha1").update(`${key}|${occurrence}`).digest("hex").slice(0, 12);
-      transactions.push({ id, ...tx });
+      parsed.push(tx);
       section.sums.set(tx.currency, (section.sums.get(tx.currency) ?? 0) + tx.amount);
       continue;
     }
@@ -227,6 +219,7 @@ export function parseStatement(rows: string[][], source: Transaction["source"]):
   }
   closeSection();
 
+  const transactions = assignIds(parsed);
   if (!transactions.length) {
     throw new Error(
       "No transactions found. Is there a header row with date, merchant and amount columns?\n" +

@@ -23,6 +23,8 @@ export interface Transaction {
   /** Cal's own business sector (ענף). Used as the default category when no rule matches. */
   sector?: string;
   memo?: string;
+  /** Last 4 digits of the card; set by the scraper, which can return several cards. */
+  card?: string;
   source: "xlsx" | "csv" | "scraper";
 }
 

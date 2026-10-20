@@ -3,3 +3,4 @@ node_modules/
 # Personal financial data — never commit
 data/transactions/
 data/reports/
+data/raw/

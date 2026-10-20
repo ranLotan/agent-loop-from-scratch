@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseAmount, parseDate, parseStatement } from "./statement-import";
 import { categorize } from "./categorize";
+import { mapScrapedAccounts } from "./scraper";
 import { renderAnnualMarkdown, summarize } from "./report";
 
 test("parseDate handles Cal formats", () => {
@@ -93,4 +94,46 @@ test("annual report: per-month and year totals come from the same summarize()", 
   assert.match(md, /\*\*Total:\*\* ₪422\.00 · €78\.60 · 8 transactions · 2 months \(09, 10\)/);
   assert.match(md, /\| מזון ומשקאות \| ₪200\.00 \|  \| 47% \| ₪100\.00 \| 2 \|/);
   assert.match(md, /\| מזון ומשקאות \| ₪100\.00 \| ₪100\.00 \| ₪200\.00 \|/);
+});
+
+test("scraper mapping: sign, Israel dates, billing month, installments, same ids as xlsx", () => {
+  const txn = (over: Record<string, unknown>) => ({
+    type: "normal",
+    status: "completed",
+    date: "2026-09-07T21:00:00.000Z", // = 2026-09-08 in Israel
+    processedDate: "2026-09-09T21:00:00.000Z", // billed 2026-09-10
+    originalAmount: -100,
+    originalCurrency: "ILS",
+    chargedAmount: -100,
+    chargedCurrency: "₪",
+    description: "שוק הכיכר",
+    category: "מזון ומשקאות",
+    rawTransaction: { trnTypeCode: "5" },
+    ...over,
+  });
+  const accounts = [
+    {
+      accountNumber: "7187",
+      txns: [
+        txn({}),
+        // Immediate debit at local midnight on Sep 1: UTC says Aug 31, must still count as September.
+        txn({ date: "2026-08-31T21:00:00.000Z", processedDate: "2026-08-31T21:00:00.000Z", chargedAmount: -39.3, originalAmount: -39.3, chargedCurrency: "€", originalCurrency: "EUR", description: "ALMYRIKI", category: undefined }),
+        // Installment 3/3: the scraper moved the date 2 months forward; we move it back.
+        txn({ type: "installments", date: "2026-08-28T21:00:00.000Z", chargedAmount: -111, originalAmount: -333, installments: { number: 3, total: 3 }, description: "ישראייר", rawTransaction: { trnTypeCode: "8" } }),
+        txn({ status: "pending" }),
+        txn({ processedDate: "2026-10-09T21:00:00.000Z" }),
+      ],
+    },
+  ];
+  const { transactions, pending, otherMonths } = mapScrapedAccounts(accounts as never, "2026-09");
+  assert.equal(pending, 1);
+  assert.equal(otherMonths, 1);
+  const [shuk, euro, flight] = transactions;
+  assert.deepEqual([shuk.date, shuk.amount, shuk.currency, shuk.type, shuk.card], ["2026-09-08", 100, "ILS", "רגילה", "7187"]);
+  assert.deepEqual([euro.date, euro.currency, euro.sector], ["2026-09-01", "EUR", undefined]);
+  assert.deepEqual([flight.date, flight.amount, flight.originalAmount, flight.type], ["2026-06-29", 111, 333, "תשלומים"]);
+
+  // Same purchase from the xlsx parser → same id, so the two sources can be compared row by row.
+  const xlsxShuk = parseStatement(STATEMENT, "xlsx").transactions[0];
+  assert.equal(shuk.id, xlsxShuk.id);
 });
