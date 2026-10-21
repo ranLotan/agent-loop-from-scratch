@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Practice</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1f2328; --muted: #6b7280;
+    --border: #e3e3df; --accent: #c2603a; --accent-text: #ffffff; --ok: #2f7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --card: #202024; --text: #e8e8ea; --muted: #9a9aa3;
+      --border: #34343a; --accent: #e07a52; --accent-text: #17171a; --ok: #6cc08f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  h2:not(:first-child) { margin-top: 18px; }
+  label { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; }
+  .source { font-weight: 600; margin: 8px 0 2px; font-size: 13px; }
+  .count { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=number] {
+    width: 80px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text);
+  }
+  textarea {
+    width: 100%; min-height: 420px; resize: vertical; padding: 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+    font: 13px/1.45 ui-monospace, Consolas, monospace;
+  }
+  button {
+    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); font: inherit; cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .link { background: none; border: none; color: var(--accent); padding: 0; font-size: 13px; }
+  .status { color: var(--muted); font-size: 13px; min-height: 1.5em; margin-top: 8px; }
+  .status.ok { color: var(--ok); }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Interview practice</h1>
+  <p class="sub">Questions come from your notes. Pick an order, then launch a mock interview in Claude or ChatGPT. Use the chat's voice mode to answer out loud.</p>
+
+  <div class="grid">
+    <section>
+      <h2>Lessons</h2>
+      <div class="row"><button class="link" id="all">All</button> · <button class="link" id="none">None</button></div>
+      <div id="lessons"><p class="empty">Loading…</p></div>
+
+      <h2>Order</h2>
+      <label><input type="radio" name="mode" value="linear" checked> Linear (as in the notes)</label>
+      <label><input type="radio" name="mode" value="random"> Random</label>
+      <label><input type="radio" name="mode" value="byLesson"> By lesson number</label>
+      <button class="link" id="reshuffle" hidden>↻ Reshuffle</button>
+
+      <h2>Interviewer style</h2>
+      <label><input type="radio" name="style" value="regular" checked> Regular</label>
+      <label><input type="radio" name="style" value="critical"> Critical (direct, no praise, strict scores)</label>
+
+      <h2>Max questions</h2>
+      <div class="row"><input type="number" id="limit" min="0" placeholder="all"> <span class="count">empty = all</span></div>
+
+      <h2>Open in</h2>
+      <label><input type="radio" name="target" value="claude" checked> Claude</label>
+      <label><input type="radio" name="target" value="chatgpt"> ChatGPT</label>
+    </section>
+
+    <section>
+      <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+        <h2 style="margin: 0;">Prompt <span id="qcount" class="count"></span></h2>
+        <div class="row">
+          <button id="copy">Copy only</button>
+          <button id="launch" class="primary">Launch ↗</button>
+        </div>
+      </div>
+      <textarea id="prompt" spellcheck="false"></textarea>
+      <div id="status" class="status"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const lessonKey = (q) => `${q.source}#${q.lesson}`;
+  const radio = (name) => document.querySelector(`input[name=${name}]:checked`).value;
+  let edited = false;
+
+  async function loadLessons() {
+    const questions = await (await fetch("/api/questions")).json();
+    const lessons = new Map(); // lessonKey -> { source, lesson, title, count }, in document order
+    for (const q of questions) {
+      const k = lessonKey(q);
+      if (!lessons.has(k)) lessons.set(k, { source: q.source, lesson: q.lesson, title: q.lessonTitle, count: 0 });
+      lessons.get(k).count++;
+    }
+
+    const box = $("lessons");
+    box.replaceChildren();
+    if (!lessons.size) {
+      box.innerHTML = '<p class="empty">No interview questions found. Notes need an <code>**Interview questions**</code> block under a <code>## Lesson N</code> heading.</p>';
+      return;
+    }
+    let lastSource = null;
+    for (const [key, l] of lessons) {
+      if (l.source !== lastSource) {
+        const s = document.createElement("div");
+        s.className = "source";
+        s.textContent = l.source;
+        box.append(s);
+        lastSource = l.source;
+      }
+      const label = document.createElement("label");
+      const cb = Object.assign(document.createElement("input"), { type: "checkbox", value: key, checked: true });
+      const text = document.createElement("span");
+      text.textContent = `${l.lesson}. ${l.title}`;
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = l.count;
+      label.append(cb, text, count);
+      box.append(label);
+    }
+  }
+
+  async function refresh() {
+    $("reshuffle").hidden = radio("mode") !== "random";
+    const lessons = [...document.querySelectorAll("#lessons input:checked")].map((cb) => cb.value);
+    const res = await fetch("/api/prompt", {
+      method: "POST",
+      body: JSON.stringify({ mode: radio("mode"), style: radio("style"), lessons, limit: Number($("limit").value) || 0 }),
+    });
+    const { prompt, count } = await res.json();
+    $("prompt").value = prompt;
+    $("qcount").textContent = `· ${count} question${count === 1 ? "" : "s"}`;
+    $("launch").disabled = $("copy").disabled = count === 0;
+    edited = false;
+    setStatus("");
+  }
+
+  function setStatus(text, ok = false) {
+    $("status").textContent = text;
+    $("status").className = ok ? "status ok" : "status";
+  }
+
+  async function copy() {
+    await navigator.clipboard.writeText($("prompt").value);
+  }
+
+  $("copy").onclick = async () => {
+    await copy();
+    setStatus("Prompt copied. Paste it into any chat with Ctrl+V.", true);
+  };
+
+  $("launch").onclick = async () => {
+    const target = radio("target");
+    await copy();
+    const res = await fetch("/api/launch", { method: "POST", body: JSON.stringify({ target, prompt: $("prompt").value }) });
+    const { url, prefilled } = await res.json();
+    window.open(url, "_blank");
+    const name = target === "claude" ? "Claude" : "ChatGPT";
+    setStatus(
+      prefilled
+        ? `Opened ${name}. The prompt should be filled in (it's also copied). If it isn't, paste with Ctrl+V. Use the mic / voice button to answer out loud.`
+        : `Opened ${name}. The prompt is too long for a link, so paste it with Ctrl+V (already copied). Use the mic / voice button to answer out loud.`,
+      true,
+    );
+  };
+
+  $("all").onclick = () => { document.querySelectorAll("#lessons input").forEach((cb) => (cb.checked = true)); refresh(); };
+  $("none").onclick = () => { document.querySelectorAll("#lessons input").forEach((cb) => (cb.checked = false)); refresh(); };
+  $("reshuffle").onclick = refresh;
+  $("prompt").oninput = () => (edited = true);
+  document.addEventListener("change", (e) => {
+    if (e.target.name === "target" || e.target.id === "prompt") return; // target doesn't change the prompt
+    if (edited && !confirm("Discard your edits to the prompt?")) return;
+    refresh();
+  });
+
+  loadLessons().then(refresh).catch((err) => setStatus(`Failed to load notes: ${err.message}`));
+</script>
+</body>
+</html>

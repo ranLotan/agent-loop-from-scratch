@@ -9,10 +9,13 @@
     "import": "tsx src/cli.ts import",
     "report": "tsx src/cli.ts report",
     "annual": "tsx src/cli.ts annual",
-    "test": "tsx --test src/*.test.ts",
+    "hello": "tsx src/agent/hello.ts",
+    "interview": "tsx src/study/server.ts",
+    "test": "tsx --test src/*.test.ts src/study/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "csv-parse": "^7.0.3",
     "israeli-bank-scrapers": "^6.12.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
