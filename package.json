@@ -10,6 +10,7 @@
     "report": "tsx src/cli.ts report",
     "annual": "tsx src/cli.ts annual",
     "hello": "tsx src/agent/hello.ts",
+    "propose": "tsx src/agent/propose.ts",
     "interview": "tsx src/study/server.ts",
     "test": "tsx --test src/*.test.ts src/study/*.test.ts",
     "typecheck": "tsc --noEmit"
