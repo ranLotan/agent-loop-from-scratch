@@ -69,3 +69,52 @@ Each lesson has key points, then interview questions with the answers we settled
    - *Answer:* The output was cut off mid-answer, so the result is incomplete or unparseable.
      Treat it as an error, not a success: raise `max_tokens`, shorten the requested output, or retry.
      Never parse a truncated answer as if it were final.
+
+---
+
+## Lesson 2: Tool calling
+
+**Key points**
+- **Tool definition:** `{ name, description, input_schema, strict }`.
+  - The **description is a prompt**: the model reads it to decide when and how to call the tool.
+  - The **schema is a contract**: code receives typed data instead of free text.
+- **The model only asks.** It returns `tool_use` blocks `{ id, name, input }` with `stop_reason: "tool_use"`. My code runs the tool.
+- **Round trip:**
+  1. user: data
+  2. → assistant: `[thinking, tool_use ×N]`
+  3. → user: `[tool_result ×N]` (each with `tool_use_id`)
+  4. → assistant: text, `end_turn`
+
+  Tool results use the **user** role. Each result is matched to its call by id, and several calls can be in flight at once.
+- **Resend the assistant content unchanged**, including the `thinking` block. Its signature lets the model continue its reasoning.
+- **`enum` constrains, `description` only suggests.** Without `enum: categories` the model invented "Streaming & Subscriptions", which isn't in my list.
+- **`strict: true`** guarantees the input matches *the schema*, not that the schema matches *my code*.
+- **Opus 5.5 rejects forced `tool_choice` (`any`/`tool`).** Use `auto`, instruct in the prompt, and check in code that the call happened.
+- **Thinking:**
+  - Reasoning models think before acting. The thinking is billed as output tokens and hidden by default on Opus 5.5 (`display: "summarized"` shows it).
+  - It's adaptive: more thinking for harder calls.
+
+**Mistakes from my attempt**
+- **No `enum` on category** → invented categories, and two runs gave two different names for the same merchant.
+- **`required: ["reasone"]` while the property was `reason`.** The API accepted it silently.
+  I then "fixed" it by renaming the property, which broke the match with the TypeScript interface (`p.reason` → `undefined`).
+- **The lesson:** `use.input as CategoryProposal` is a *cast*, not a check. Tool input is external data, so validate it at runtime (Zod, lesson 7).
+
+**Interview questions**
+1. Who executes a tool, the model or your code? Why does that matter?
+   - *Answer:* My code. The model only returns a `tool_use` request (name + JSON input).
+     That makes code the gatekeeper: it can validate the input, refuse, rate-limit, log, or ask a human before anything with side effects happens.
+     The model has no direct access to my systems.
+2. How do you guarantee structured output, and what if the model doesn't call the tool?
+   - *Answer:* A tool with a JSON schema, `strict: true`, and `enum`s for closed sets, plus runtime validation in code, since strict covers the schema and not my types.
+     A call isn't guaranteed (`tool_choice` auto, and forced calls are rejected on some models), so code checks for a `tool_use` block and retries or reports a failure. Never assume compliance.
+3. Walk through the messages of one tool round trip.
+   - *Answer:*
+     1. `user`: the task.
+     2. `assistant`: `thinking` + one or more `tool_use` blocks, each with an id. `stop_reason` is `tool_use`.
+     3. Code runs each tool and sends one `user` message with a `tool_result` per call, matched by `tool_use_id` (`is_error: true` on failure).
+     4. The model replies with text and `end_turn`, or asks for more tools. Repeating step 3 is the agent loop.
+4. `strict: true` was on but you still got `undefined`. What does strict guarantee?
+   - *Answer:* That the model's input is valid against the schema I sent: types, enums, required fields.
+     It can't know my TypeScript interface. A schema/interface mismatch passes strict and fails in my code.
+     Fix: a single source of truth (generate the schema from a Zod type) and runtime validation.

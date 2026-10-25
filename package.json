@@ -1,9 +1,9 @@
 {
-  "name": "cal-expense-agent",
+  "name": "agent-loop-from-scratch",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Monthly Visa Cal expense report with rule-based categorization (and, later, an agent).",
+  "description": "An LLM agent loop written by hand on the Claude Messages API. It categorizes credit card spending, with code for the math and human approval for the model's proposals.",
   "scripts": {
     "fetch": "tsx src/cli.ts fetch",
     "import": "tsx src/cli.ts import",
@@ -11,8 +11,9 @@
     "annual": "tsx src/cli.ts annual",
     "hello": "tsx src/agent/hello.ts",
     "propose": "tsx src/agent/propose.ts",
+    "agent": "tsx src/agent/run.ts",
     "interview": "tsx src/study/server.ts",
-    "test": "tsx --test src/*.test.ts src/study/*.test.ts",
+    "test": "tsx --test src/*.test.ts src/agent/*.test.ts src/study/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

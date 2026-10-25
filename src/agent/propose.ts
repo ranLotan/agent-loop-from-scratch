@@ -7,13 +7,11 @@
 // Lesson 3 turns this into a loop that repeats until the model stops asking for tools.
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { categorize } from "../categorize";
 import { loadRules, loadTransactions } from "../store";
 import { client, MODEL } from "./client";
+import { merchantsToReview } from "./merchants";
 import { proposeCategoryTool, type CategoryProposal } from "./tools";
 
-/** Cal sectors too vague to trust; the agent reviews these along with uncategorized ones. */
-const VAGUE_SECTORS = new Set(["שונות", "מוסדות"]);
 const MAX_MERCHANTS = 5;
 
 const month = process.argv[2];
@@ -25,14 +23,7 @@ const transactions = loadTransactions(month);
 if (!transactions) throw new Error(`No data for ${month}. Run fetch or import first.`);
 const rules = loadRules();
 
-// Deterministic part: code decides WHICH merchants need judgment.
-const merchants = [
-  ...new Set(
-    categorize(transactions, rules)
-      .filter((t) => t.category === null || VAGUE_SECTORS.has(t.category))
-      .map((t) => t.merchant),
-  ),
-].slice(0, MAX_MERCHANTS);
+const merchants = merchantsToReview(transactions, rules, MAX_MERCHANTS);
 
 if (merchants.length === 0) {
   console.log("Nothing to review: every merchant has a specific category.");
