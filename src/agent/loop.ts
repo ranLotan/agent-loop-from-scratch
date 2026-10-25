@@ -96,5 +96,5 @@ export async function runLoop(opts: LoopOptions): Promise<LoopResult> {
     messages.push({ role: "user", content: results });
   }
 
-  return { stoppedBy: "max_iterations", messages, iterations: iter, usage, finalText: "max_iterations" };
+  return { stoppedBy: "max_iterations", messages, iterations: iter, usage, finalText: response ? finalText(response) : "" };
 }

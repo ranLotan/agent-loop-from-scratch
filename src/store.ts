@@ -35,6 +35,14 @@ export function listMonths(year: string): string[] {
     .sort();
 }
 
+/** All transactions from months before `month` (this year and last), oldest first. */
+export function loadHistory(month: string): Transaction[] {
+  const year = Number(month.slice(0, 4));
+  return [...listMonths(String(year - 1)), ...listMonths(String(year))]
+    .filter((m) => m < month)
+    .flatMap((m) => loadTransactions(m) ?? []);
+}
+
 /** The untouched scraper output, for debugging the mapping. Gitignored. */
 export const rawPath = (name: string) => join(DATA_DIR, "raw", name);
 

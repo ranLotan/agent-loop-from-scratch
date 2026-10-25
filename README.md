@@ -57,8 +57,8 @@ Model *quality* is measured separately with evals against labeled data (see the 
 | Tool | Kind | Purpose |
 |---|---|---|
 | `propose_category` | records a proposal | `strict: true` JSON schema. `category` is an `enum` built from my category list, so the model can't invent a category. |
-| `lookup_merchant` | read-only | past transactions and existing rules for a merchant *(planned)* |
-| `flag_exception` | records a flag | unusual charges found by code (over a threshold, new subscription, possible duplicate), with the model's explanation *(planned)* |
+| `lookup_merchant` | read-only | past charges for a merchant from earlier months |
+| `flag_exception` | records a flag | unusual charges found by code (over a threshold, new subscription, possible duplicate), with the model's explanation |
 | `save_rule` | side effect | runs only after human approval *(planned)* |
 
 ## Roadmap
@@ -69,8 +69,8 @@ Built in stages. Each stage is one concept, and I keep notes on each in [`notes/
 - [x] Bank scraper ([`israeli-bank-scrapers`](https://github.com/eshaham/israeli-bank-scrapers)), with ids that match the manual xlsx import
 - [x] First API call: messages, system prompt, content blocks, `stop_reason`, token cost
 - [x] Tool calling: a JSON-schema tool and one `tool_use` → `tool_result` round trip
-- [ ] **The agent loop by hand, with fake-model tests** ← in progress
-- [ ] Tool design: read-only vs. side-effect tools, and exception candidates computed by code
+- [x] The agent loop by hand, with fake-model tests
+- [x] Tool design: read-only vs. side-effect tools, and exception candidates computed by code
 - [ ] Human-in-the-loop approval and memory (rules for exact matches, notes for fuzzy cases)
 - [ ] Evals: accuracy against labeled data, prompt-injection cases (merchant names are untrusted input), model cost comparison
 - [ ] Refactor to the Claude Agent SDK and compare it with the hand-written loop

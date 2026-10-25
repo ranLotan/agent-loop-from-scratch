@@ -118,3 +118,96 @@ Each lesson has key points, then interview questions with the answers we settled
    - *Answer:* That the model's input is valid against the schema I sent: types, enums, required fields.
      It can't know my TypeScript interface. A schema/interface mismatch passes strict and fails in my code.
      Fix: a single source of truth (generate the schema from a Zod type) and runtime validation.
+
+---
+
+## Lesson 3: The agent loop
+
+**Key points**
+- **An agent is a while-loop around the tool round trip:**
+  call → push the assistant turn → stop unless `tool_use` → run tools → push the results → repeat.
+  The model decides how many turns it needs, and code decides the limits.
+- **The guards matter more than the happy path:**
+  - **`maxIterations`:** caps the cost of a model that never stops calling tools.
+  - **Tool errors → `is_error: true` results, not exceptions:** the model reads the error and can recover (for example, it re-sends the exact merchant name).
+  - **`max_tokens` / `refusal` → stop:** never run tool input from a cut-off turn.
+  - **Copy the input `messages`:** don't mutate the caller's data.
+- **The loop is generic; the tools plug in.** The loop dispatches by name through `handlers[block.name]` and knows nothing about categories. Domain logic lives in the handlers.
+- **`await` inside a `try`:** an error thrown by a handler is caught and becomes a result. `.map` with an async handler would give Promises, so use `for...of`.
+- **Roles alternate:** user (task) → assistant (tool_use) → user (tool_result) → … → assistant (text, `end_turn`).
+  The assistant turn goes back unchanged so the `tool_result` ids refer to a real request, and the thinking signature stays valid.
+- **Testing:**
+  - The client is injected (dependency injection), so tests use a **fake model** with scripted replies. No network, no cost, the same result every run.
+  - Fakes test the *control flow*; evals test the model's *judgment* (lesson 6).
+- **Real run:** 10 merchants on 2026-10 cost $0.057. BIT/PAYBOX transfers came back as `low` confidence, as instructed.
+
+**Mistakes from my attempt**
+- I pasted category-specific code (`CategoryProposal`, `merchants`) into the generic loop, and `process.exit(1)` killed the test runner.
+- **`filter(...).join("")` gave `"[object Object]"`:** filter keeps block *objects*. You need `.map(b => b.text)` before `join`.
+- I put `"max_iterations"` in `finalText`. Each field should have one meaning: status goes in `stoppedBy`, model output goes in `finalText`.
+
+**Interview questions**
+1. Write the agent loop in pseudocode. What are its stop conditions?
+   - *Answer:* `while iterations < max`:
+     1. Call the model with the full history, and append its reply as an assistant message.
+     2. If `stop_reason` is `max_tokens` or `refusal` → stop without running tools.
+     3. If it isn't `tool_use` → done (`end_turn`).
+     4. Otherwise run each `tool_use` and append one user message with all the `tool_result`s (matched by id). Repeat.
+
+     It also stops when the iteration limit is hit. A real system adds a token or cost budget and a timeout.
+2. A tool throws an exception mid-run. What should the loop do, and why?
+   - *Answer:* Catch it and return a `tool_result` with `is_error: true` and the error message. Don't crash.
+     The model sees the error and can retry with fixed input, try another tool, or explain the failure.
+     That ability to recover is a big part of why you use an agent at all.
+     Crashing loses the whole conversation and every token spent so far.
+3. How do you unit-test an agent when the model's output is non-deterministic?
+   - *Answer:* Split the two concerns.
+     - **The control flow** (dispatch, error handling, limits, message shape) is deterministic code: inject the model client and replace it with a fake that returns scripted responses. No network or cost, and the tests are exact.
+     - **The model's judgment** is tested separately with evals: a labeled dataset scored for accuracy, tracked across prompt and model changes.
+4. Why must the loop never mutate the `messages` array it receives?
+   - *Answer:* Arrays are passed by reference, so pushing to the caller's array changes their data behind their back.
+     Reusing the same starting messages for a second run, or comparing models, would then start from a polluted history.
+     Copy the array (`[...opts.messages]`) and return the new history in the result.
+
+---
+
+## Lesson 4: Tool design
+
+**Key points**
+- **With several tools, the model chooses** which one to call, when, and how often. The descriptions and the system prompt steer that choice, so tool design is mostly writing.
+- **A good tool description says:**
+  - what it does and returns (including what the fields mean)
+  - when to use it, and when *not* to
+  - whether it has side effects
+  - how to fill the tricky fields, with an example
+- **Read-only vs. side effects:** read-only tools (`lookup_merchant`) are safe to call freely. Tools that record or change things need guards: an `enum` of allowed ids, validation in the handler, and later human approval.
+- **Small, focused tools:** one job each, a clear name, a narrow schema. They're easier for the model to choose correctly, and easier to test.
+- **Code finds, the model judges.** Deterministic checks (`src/candidates.ts`) find exception candidates; the model only decides which ones matter and explains why.
+  The thresholds need tuning: the first version gave 53 candidates a month, and with a ₪300 minimum it gave 9. Noisy alerts get ignored.
+- **Prefetch vs. a tool (context engineering):**
+  - Every tool call costs a full round trip that resends the whole history.
+  - Small, deterministic, known-needed data should go in the prompt up front.
+  - Use tools for retrieval that's large, conditional, open-ended or expensive.
+- **Parallel tool calls:** one turn can hold many `tool_use` blocks. The October run made 16 tool calls in just 3 model calls.
+- **Prompt injection:** merchant names are untrusted input. The system prompt says they are data, never instructions.
+- **Real run (2026-10):** 3 lookups, 10 proposals, and 3 flags out of 9 candidates (6 routine ones left alone). Cost $0.117, double lesson 3, because of the extra input: tool definitions, candidates and lookup results.
+
+**Mistakes from my attempt**
+- **I described `flag_exception` in terms of category fit** ("low fit → warning"). That's `propose_category`'s job.
+  An exception is about the *charge* being unusual (large, new, duplicate, unexpected subscription), whatever its category.
+- **The lookup's `rule` field was useless for the merchants being categorized,** since only merchants with no rule get reviewed. Check that each tool field has a real use.
+
+**Interview questions**
+1. What makes a good tool description?
+   - *Answer:* It's a prompt for choosing and using the tool. It says what the tool does and returns (including the meaning of the fields), when to use it, when *not* to, whether it has side effects, and how to fill the tricky parameters, with an example.
+     Vague descriptions cause wrong or wasted calls.
+2. How do you treat read-only tools differently from tools with side effects?
+   - *Answer:* Read-only tools can be called freely; the worst case is a wasted call.
+     Side-effect tools get guards: a narrow schema (enums of valid ids), validation in the handler, idempotency or duplicate checks, and human approval before anything irreversible.
+     Keep the two kinds in separate tools, so the risky ones are few and easy to audit.
+3. When should context go in the prompt, and when behind a tool?
+   - *Answer:* **In the prompt** when it's small, deterministic, and known to be needed, like each merchant's recent history. That saves round trips, since every tool call resends the whole conversation.
+     **Behind a tool** when it's large, only sometimes needed, open-ended (the model decides what to search), or expensive to fetch.
+4. Why does code find the exception candidates instead of the model scanning every transaction?
+   - *Answer:* The checks are deterministic (thresholds, new merchant, duplicates), so code is exact, free, and testable.
+     The model only judges the few candidates (9 instead of ~100 transactions), which is cheaper, and its job stays focused on what it's good at: is this actually unusual, and how do I explain it?
