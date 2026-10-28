@@ -4,3 +4,5 @@ node_modules/
 data/transactions/
 data/reports/
 data/raw/
+data/proposals/
+data/memory.md

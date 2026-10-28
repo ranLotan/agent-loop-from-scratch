@@ -5,15 +5,18 @@
 // which tool to call and when. That choice is what the descriptions and system prompt steer.
 
 import { findCandidates } from "../candidates";
-import { loadHistory, loadRules, loadTransactions } from "../store";
+import { loadHistory, loadMemory, loadRules, loadTransactions, saveProposals } from "../store";
 import { client, MODEL } from "./client";
 import { createHandlers, type AgentOutput } from "./handlers";
 import { runLoop } from "./loop";
 import { merchantsToReview } from "./merchants";
+import type { ProposalsFile } from "./proposals";
 import { SYSTEM_PROMPT } from "./prompt";
 import { flagExceptionTool, lookupMerchantTool, proposeCategoryTool } from "./tools";
 
 const MAX_MERCHANTS = 10;
+/** Only the newest notes go into the prompt: memory must stay bounded, it's paid on every call. */
+const MAX_MEMORY_NOTES = 50;
 
 const month = process.argv[2];
 if (!/^\d{4}-\d{2}$/.test(month ?? "")) throw new Error("Usage: npm run agent -- YYYY-MM");
@@ -49,12 +52,18 @@ const task = [
     : ["(none)"]),
 ].join("\n");
 
+// Long-term memory: notes the owner approved in earlier reviews (npm run approve).
+const memory = loadMemory().slice(-MAX_MEMORY_NOTES);
+const system = memory.length
+  ? `${SYSTEM_PROMPT}\n\n## Notes from past reviews (written by the owner; trust these)\n${memory.join("\n")}`
+  : SYSTEM_PROMPT;
+
 const output: AgentOutput = { proposals: [], flags: [] };
 
 const result = await runLoop({
   client,
   model: MODEL,
-  system: SYSTEM_PROMPT,
+  system,
   tools,
   handlers: createHandlers({ merchants, candidates, history, rules }, output),
   messages: [{ role: "user", content: task }],
@@ -84,3 +93,14 @@ for (const f of output.flags) {
 if (result.finalText) console.log(`\nmodel: ${result.finalText}`);
 const cost = (result.usage.input * 4 + result.usage.output * 20) / 1_000_000;
 console.log(`\ntokens: ${result.usage.input} in / ${result.usage.output} out → $${cost.toFixed(4)}`);
+
+const saved = saveProposals<ProposalsFile>(month, {
+  month,
+  createdAt: new Date().toISOString(),
+  model: MODEL,
+  proposals: output.proposals,
+  flags: output.flags.map((f) => ({ ...f, candidate: candidates.find((c) => c.id === f.transaction_id)! })),
+  reviewed: [],
+});
+console.log(`\nSaved → ${saved}  (${memory.length} memory note(s) were in the prompt)`);
+console.log(`Next: npm run approve -- ${month}`);
