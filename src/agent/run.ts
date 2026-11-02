@@ -80,7 +80,10 @@ for (const m of result.messages) {
 console.log(`stopped by: ${result.stoppedBy} after ${result.iterations} call(s) | tool calls: ${JSON.stringify(calls)}\n`);
 
 console.log(`Proposals (${output.proposals.length}/${merchants.length}):`);
-for (const p of output.proposals) console.log(`  ${p.merchant} → ${p.category} [${p.confidence}] ${p.reason}`);
+for (const p of output.proposals) {
+  console.log(`  ${p.merchant} → ${p.category} [${p.confidence}] ${p.reason}`);
+  if (p.new_category_idea) console.log(`    💡 new category idea: ${p.new_category_idea}`);
+}
 const missed = merchants.filter((m) => !output.proposals.some((p) => p.merchant === m));
 if (missed.length) console.warn(`  ⚠ No proposal for: ${missed.join(", ")}`);
 

@@ -62,6 +62,19 @@ export function loadRules(): RulesFile {
 export function addRules(newRules: Rule[]): void {
   const file = loadRules();
   file.rules.push(...newRules);
+  writeRules(file);
+}
+
+/** Adds categories the owner created in `approve`. Existing names are ignored. */
+export function addCategories(names: string[]): void {
+  const file = loadRules();
+  const fresh = names.filter((n) => !file.categories.includes(n));
+  if (!fresh.length) return;
+  file.categories.push(...fresh);
+  writeRules(file);
+}
+
+function writeRules(file: RulesFile): void {
   const categories = file.categories.map((c) => `    ${JSON.stringify(c)}`).join(",\n");
   const rules = file.rules
     .map((r) => `    { "merchant": ${JSON.stringify(r.merchant)}, "category": ${JSON.stringify(r.category)} }`)

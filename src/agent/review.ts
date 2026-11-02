@@ -15,10 +15,14 @@ export type Answer =
   | { kind: "approve" } //                            accept the model's category
   | { kind: "change"; category: string } //           the model was wrong; use this category
   | { kind: "note"; text: string } //                 no rule, just remember something about this merchant
-  | { kind: "skip" }; //                              decide later
+  | { kind: "skip" } //                               decide later
+  | { kind: "new_category"; category: string }; //   none of the categories fit; create this one
 
 /** What to write. One answer can lead to several actions (e.g. a rule AND a note). */
-export type Action = { kind: "add_rule"; rule: Rule } | { kind: "add_memory"; note: string };
+export type Action =
+  | { kind: "add_category"; name: string }
+  | { kind: "add_rule"; rule: Rule }
+  | { kind: "add_memory"; note: string };
 
 /**
  * The policy (the tests check each line):
@@ -31,6 +35,10 @@ export type Action = { kind: "add_rule"; rule: Rule } | { kind: "add_memory"; no
  *   5. skip → nothing.
  *   6. A category not in rules.categories → throw (a rule must use a known category).
  *   7. A merchant that already has a rule → no add_rule (notes are still fine).
+ *   8. new_category → add_category (name trimmed) FIRST, then add_rule with it. No memory note: the rule
+ *      covers this merchant and the enum shows the new category next run, so a note would only repeat them.
+ *      An empty name → throw. A name that already exists → no add_category, just the rule.
+ *      Careful: ruleFor checks rules.categories, which doesn't contain the new name yet.
  *
  * `today` is passed in (not new Date()) so tests get the same result every run.
  */
@@ -39,8 +47,9 @@ export function decide(p: CategoryProposal, answer: Answer, rules: RulesFile, to
   const note = (text: string): Action => ({ kind: "add_memory", note: formatMemoryNote(today, merchant, text) });
 
   // 6 + 7: every rule goes through here, so the checks live in one place.
-  const ruleFor = (category: string): Action[] => {
-    if (!rules.categories.includes(category)) throw new Error(`Unknown category: ${category}`);
+  // `allowed` lets new_category add its name without touching `rules` (decide must stay pure).
+  const ruleFor = (category: string, allowed = rules.categories): Action[] => {
+    if (!allowed.includes(category)) throw new Error(`Unknown category: ${category}`);
     const exists = rules.rules.some((r) => normalizeMerchant(r.merchant) === normalizeMerchant(merchant));
     return exists ? [] : [{ kind: "add_rule", rule: { merchant, category } }];
   };
@@ -53,11 +62,22 @@ export function decide(p: CategoryProposal, answer: Answer, rules: RulesFile, to
       }
       return ruleFor(p.category);
     case "change": // TypeScript knows answer.category exists here
+      // Same category as proposed = an approve; a "proposed X, chose X" note would teach nothing.
+      if (answer.category === p.category) return ruleFor(p.category);
       return [...ruleFor(answer.category), note(`model proposed ${p.category}, owner chose ${answer.category}`)];
     case "note":
       return [note(answer.text)];
     case "skip":
       return [];
+    case "new_category": {
+      const newCategory = answer.category.trim(); // a local copy: the caller's answer stays as it was
+      if (!newCategory) throw new Error("new category name is missing");
+      const exists = rules.categories.includes(newCategory);
+      return [
+        ...(exists ? [] : [{ kind: "add_category", name: newCategory } as const]),
+        ...ruleFor(newCategory, [...rules.categories, newCategory]), // a new array; rules is untouched
+      ];
+    }
     default: {
       const unreachable: never = answer; // compile error if a new Answer kind is added and not handled
       throw new Error(`Unknown answer: ${JSON.stringify(unreachable)}`);

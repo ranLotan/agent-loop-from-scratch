@@ -66,3 +66,35 @@ test("6. unknown category → throws", () => {
 test("7. merchant already has a rule → no duplicate rule (case/space-insensitive)", () => {
   assert.deepEqual(decide(proposal(" netflix ", "high"), { kind: "approve" }, rules, TODAY), []);
 });
+
+test("8a. new_category → add_category first, then a rule using it (no note: it would repeat the rule)", () => {
+  const actions = decide(proposal("Pet Zoo", "low", "שונות"), { kind: "new_category", category: " חיות מחמד " }, rules, TODAY);
+  assert.deepEqual(actions, [
+    { kind: "add_category", name: "חיות מחמד" },
+    { kind: "add_rule", rule: { merchant: "Pet Zoo", category: "חיות מחמד" } },
+  ]);
+});
+
+test("8d. decide doesn't mutate its inputs (it's a pure function)", () => {
+  const r: RulesFile = structuredClone(rules);
+  const answer = { kind: "new_category" as const, category: " חיות מחמד " };
+  decide(proposal("Pet Zoo", "low", "שונות"), answer, r, TODAY);
+  assert.deepEqual(r, rules);
+  assert.equal(answer.category, " חיות מחמד "); // untouched; the trimmed name is in the OUTPUT (8a)
+});
+
+test("3b. change to the same category as proposed → like approve, no useless note", () => {
+  assert.deepEqual(decide(proposal("Disney Plus", "medium"), { kind: "change", category: "פנאי בילוי" }, rules, TODAY), [
+    { kind: "add_rule", rule: { merchant: "Disney Plus", category: "פנאי בילוי" } },
+  ]);
+});
+
+test("8b. new_category with an existing name → no add_category (like change)", () => {
+  const actions = decide(proposal("Pet Zoo", "low", "שונות"), { kind: "new_category", category: "רפואה ובריאות" }, rules, TODAY);
+  assert.ok(!actions.some((a) => a.kind === "add_category"));
+  assert.deepEqual(actions[0], { kind: "add_rule", rule: { merchant: "Pet Zoo", category: "רפואה ובריאות" } });
+});
+
+test("8c. new_category with an empty name → throws", () => {
+  assert.throws(() => decide(proposal("Pet Zoo", "low"), { kind: "new_category", category: "  " }, rules, TODAY));
+});

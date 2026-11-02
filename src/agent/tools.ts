@@ -11,6 +11,8 @@ export interface CategoryProposal {
   category: string;
   confidence: "high" | "medium" | "low";
   reason: string;
+  /** Lesson 5: a category the model thinks is missing from the list. The owner decides in `approve`. */
+  new_category_idea?: string | null;
 }
 
 export function proposeCategoryTool(categories: string[]): Anthropic.Tool {
@@ -31,10 +33,17 @@ export function proposeCategoryTool(categories: string[]): Anthropic.Tool {
         merchant: { type: "string", description: "the name of merchant exactly as given" },
         category: { type: "string", enum: categories, description: "category from categories list in args, chosen for the merchant" },
         confidence: { type: "string", enum: ["high", "medium", "low"], description: "how much model is confidence with anwswer" },
-        reason: { type: "string", description: "one short sentence explains what in the merchant name indicates a category, not found for no relation"}
+        reason: { type: "string", description: "one short sentence explains what in the merchant name indicates a category, not found for no relation"},
+        // TODO (lesson 5): new_category_idea. The model still MUST pick `category` from the enum (so the
+        //   report stays valid); this field only SUGGESTS a missing category to the owner.
+        //   - type: ["string", "null"]   (null = the list is fine; the usual case)
+        //   - description: when to suggest one (none of the categories fit, not just "could be more specific"),
+        //     and what a good name looks like (short, Hebrew, same style as the list).
+        //   - then add it to `required` below (strict mode: nullable + required is the safe way to say "optional").
+        new_category_idea: { type: ['string', 'null'], description: "Usually null: if one of the categories is a reasonable fit, use null, even if it isn't perfect. Suggest a new category only when none of them fits, and still pick the closest one in `category`. A good name is short, in Hebrew, in the same style as the list. Example: a pet store when there is no pets category → \"חיות מחמד\"; a pharmacy → null (רפואה ובריאות fits)." }
       },
       // TODO 4: required: [all four], additionalProperties: false
-      required: ["merchant", "category", "confidence", "reason"],
+      required: ["merchant", "category", "confidence", "reason", "new_category_idea"],
       additionalProperties: false
     },
   };

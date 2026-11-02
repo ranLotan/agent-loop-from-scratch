@@ -6,9 +6,10 @@
 // (the agent reads them next run).
 
 import { createInterface } from "node:readline/promises";
-import { addRules, appendMemory, loadProposals, loadRules, saveProposals } from "../store";
+import { addCategories, addRules, appendMemory, loadProposals, loadRules, saveProposals } from "../store";
 import type { ProposalsFile } from "./proposals";
 import { decide, formatMemoryNote, type Answer } from "./review";
+import type { CategoryProposal } from "./tools";
 
 const month = process.argv[2];
 if (!/^\d{4}-\d{2}$/.test(month ?? "")) throw new Error("Usage: npm run approve -- YYYY-MM");
@@ -18,20 +19,26 @@ if (!file) throw new Error(`No proposals for ${month}. Run: npm run agent -- ${m
 
 const today = new Date().toISOString().slice(0, 10);
 const rl = createInterface({ input: process.stdin, output: process.stdout });
-const stats = { rules: 0, notes: 0, skipped: 0 };
+const stats = { categories: 0, rules: 0, notes: 0, skipped: 0 };
 
 function markReviewed(key: string) {
   file!.reviewed.push(key);
   saveProposals(month, file); // save after every answer, so quitting halfway loses nothing
 }
 
-async function ask(): Promise<Answer | "quit"> {
+async function ask(p: CategoryProposal): Promise<Answer | "quit"> {
   for (;;) {
-    const key = (await rl.question("  Enter = approve · c = change · n = note · s = skip · q = quit > ")).trim().toLowerCase();
+    const key = (await rl.question("  Enter = approve · c = change · + = new category · n = note · s = skip · q = quit > ")).trim().toLowerCase();
     if (key === "") return { kind: "approve" };
     if (key === "s") return { kind: "skip" };
     if (key === "q") return "quit";
     if (key === "n") return { kind: "note", text: await rl.question("  note: ") };
+    if (key === "+") {
+      const idea = p.new_category_idea ?? "";
+      const name = (await rl.question(`  new category name${idea ? ` [Enter = ${idea}]` : ""}: `)).trim() || idea;
+      if (name) return { kind: "new_category", category: name };
+      console.log("  No name given.");
+    }
     if (key === "c") {
       const { categories } = loadRules();
       categories.forEach((c, i) => console.log(`    ${String(i + 1).padStart(2)}. ${c}`));
@@ -49,15 +56,19 @@ console.log(`\n${month}: ${pending.length} proposal(s) to review, ${file.flags.l
 for (const [i, p] of pending.entries()) {
   console.log(`[${i + 1}/${pending.length}] ${p.merchant} → ${p.category} [${p.confidence}]`);
   console.log(`  ${p.reason}`);
-  const answer = await ask();
+  if (p.new_category_idea) console.log(`  💡 suggested new category: ${p.new_category_idea}  (press + to create it)`);
+  const answer = await ask(p);
   if (answer === "quit") break;
 
   try {
     const actions = decide(p, answer, loadRules(), today);
+    // Categories first: a new rule may use a category created by this same answer.
+    addCategories(actions.flatMap((a) => (a.kind === "add_category" ? [a.name] : [])));
     addRules(actions.flatMap((a) => (a.kind === "add_rule" ? [a.rule] : [])));
     appendMemory(actions.flatMap((a) => (a.kind === "add_memory" ? [a.note] : [])));
     for (const a of actions) {
-      if (a.kind === "add_rule") stats.rules++, console.log(`  ✓ rule: ${a.rule.merchant} → ${a.rule.category}`);
+      if (a.kind === "add_category") stats.categories++, console.log(`  ✓ category: ${a.name}`);
+      else if (a.kind === "add_rule") stats.rules++, console.log(`  ✓ rule: ${a.rule.merchant} → ${a.rule.category}`);
       else stats.notes++, console.log(`  ✓ memory: ${a.note}`);
     }
     if (answer.kind === "skip") stats.skipped++;
@@ -88,5 +99,5 @@ for (const f of pendingFlags) {
 }
 
 rl.close();
-console.log(`Done: ${stats.rules} rule(s) added, ${stats.notes} memory note(s), ${stats.skipped} skipped.`);
+console.log(`Done: ${stats.categories} new categor${stats.categories === 1 ? "y" : "ies"}, ${stats.rules} rule(s) added, ${stats.notes} memory note(s), ${stats.skipped} skipped.`);
 if (stats.rules) console.log(`Next run, those merchants are categorized by code: npm run report -- ${month}`);
