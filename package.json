@@ -13,8 +13,9 @@
     "propose": "tsx src/agent/propose.ts",
     "agent": "tsx src/agent/run.ts",
     "approve": "tsx src/agent/approve.ts",
+    "eval": "tsx src/eval/run.ts",
     "interview": "tsx src/study/server.ts",
-    "test": "tsx --test src/*.test.ts src/agent/*.test.ts src/study/*.test.ts",
+    "test": "tsx --test src/*.test.ts src/agent/*.test.ts src/eval/*.test.ts src/study/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

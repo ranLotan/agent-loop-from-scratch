@@ -264,3 +264,75 @@ Each lesson has key points, then interview questions with the answers we settled
 5. Why make the approval policy a pure function?
    - *Answer:* It's the part with the most edge cases, so it needs the most tests. A pure function (inputs → actions, no I/O, no mutation) is trivial to test and gives the same result every run (`today` is passed in, not `new Date()`).
      Mutating the inputs causes bugs that depend on call order, and they can even hide in tests.
+
+## Lesson 6: Evals
+
+**Key points**
+- **An eval = fixed cases + the real agent + a grader that turns outputs into numbers.**
+  - It uses the same system prompt, tools, loop and batch size as production. Otherwise it measures a different system.
+  - It measures the whole system, so it checks prompt changes, tool descriptions, model swaps and model upgrades. Comparing models is only one use.
+- **Testing something non-deterministic:**
+  - Test everything deterministic as normal code (a fake model for the loop, unit tests for pure functions).
+  - Measure the model's judgment as **rates** over many cases, not single answers.
+  - Grade **properties** (the category is from the enum; the injected category wasn't used), never free text.
+  - Structured output (`strict` + `enum`) reduces the variance up front.
+- **Labels, by trust:**
+  - **Gold:** the owner's own rules (8). They define "correct", but they're few.
+  - **Silver:** Cal's sector (25 of 160). Free and plentiful, but generic and sometimes wrong (weak supervision).
+  - **Injection:** synthetic attack cases (3), graded on behaviour.
+  - Gold grows by itself: every `approve` run adds rules, so **human-in-the-loop produces eval data**.
+- **No label leakage:** the model must never see the answer.
+  - `lookup_merchant` returns `calSector`, which *is* the silver label, so the eval runs with empty history, no rules and no memory.
+- **Security gets its own number.** Mixed into accuracy, "86%" could hide a model that falls for every injection.
+- **Noise:** one gold case is 12%, one silver case is 4%. Trust only differences bigger than the noise, and repeat runs before deciding.
+- **The grader is plain code** (exact match): free, deterministic and testable. A model as grader is only for answers that have no single right form.
+
+**Results (2026-11-03, 36 cases, one run)**
+
+| | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 |
+|---|---|---|---|
+| gold accuracy | 88% | 75% | 88% |
+| silver accuracy | 68% | 72% | 64% |
+| injection resisted | 100% | 100% | 100% |
+| "high" accuracy | 86% (22) | 84% (19) | 88% (16) |
+| "low" accuracy | 29% (7) | 33% (9) | 13% (8) |
+| cost | $0.31 | $0.16 | $0.0085 |
+| seconds | 90 | 62 | 45 |
+
+**What the numbers say**
+- **The model differences are 1–2 cases,** within the noise. No model is clearly more accurate here.
+- **Calibration holds for all three:** "high" is right about 86% of the time, "low" only 13–33%. Lesson 5's policy (low → no rule, only a note) rests on a real signal.
+- **Error analysis (the "Wrong" lists):** most silver errors are **shared by all three models**, so the label is what's debatable.
+  - Examples: baby clothes → ילדים (Cal: אופנה), a museum → פנאי בילוי (Cal: תיירות), a gelato shop → מסעדות (Cal: מזון ומשקאות).
+  - Greek merchants from a trip can't be categorized from the name. Opus and Sonnet guessed תיירות; Haiku said שונות with low confidence.
+  - Without reading the list, "68% silver" would have looked like a weak model.
+- **The gold errors are the owner's conventions** (a yoga class listed under a person's name → פנאי בילוי). No model can know them; that's what rules and memory are for. The eval runs without memory on purpose.
+- **Decision:** Haiku is good enough for categorization at about 1/36 of Opus's cost.
+  - Caveats: one run, 36 cases, and the exception-judging task isn't evaluated yet.
+- **Latency:** the calls inside one batch are a chain (call 2 needs call 1's tool results), so they can't run in parallel. Separate batches could.
+
+**Mistakes from my attempt**
+- **`continue` inside `forEach`:** forEach runs a callback, not a loop, so `continue` is a syntax error. Use `for...of`.
+- **Skipping a missing proposal:** it would hide a model that skips merchants. A missing proposal counts as wrong.
+- **`find` returns `T | undefined`:** handle the undefined case (`p?.category`) instead of assuming it exists.
+
+**Interview questions**
+1. How do you test an agent when the model isn't deterministic?
+   - *Answer:* Split it. Everything deterministic (the loop, validation, policies) is tested as normal code, with a fake model that returns scripted responses.
+     The model's judgment is measured statistically: an eval over many labeled cases, tracking rates rather than single answers, and grading properties (the category is from the enum, the injected category wasn't used) rather than text.
+     Structured output narrows what the model can answer, and differences smaller than the noise (one case = a few %) aren't trusted.
+2. What is an eval, and what decisions does it let you make?
+   - *Answer:* Fixed cases + the real agent (same prompt, tools, loop) + a grader that produces numbers.
+     It turns every change into a measured decision: did a prompt edit help, did a tool description cause wrong calls, can I switch to a cheaper model, did a model upgrade break something, does it still resist injection.
+     Without it, "I improved the prompt" means "I read three outputs and they looked fine."
+3. Where do labels come from, and how do you handle noisy ones?
+   - *Answer:* Gold labels are human decisions: accurate, but expensive and few. Silver labels come for free from another system (here, the bank's merchant sector): plentiful, but noisy.
+     Use both, and always read the failures. When every model "fails" the same case, the label is probably wrong.
+     A good trick: human-in-the-loop approvals produce new gold labels every month.
+4. What is label leakage, and how did you prevent it?
+   - *Answer:* Any path from the expected answer to the model. The model copies the answer, and the score becomes meaningless.
+     Here, `lookup_merchant` returns the bank's sector, which is the silver label, and the owner's rules and memory notes contain the gold answers. So the eval runs with empty history, no rules and no memory. The answers stay in code and are used only by the grader, after the model is done.
+5. How would you choose a model for this agent?
+   - *Answer:* Measure quality, cost and latency on my own eval, not a public benchmark.
+     Here all three models scored within noise of each other on accuracy, all resisted the injections, and all were well calibrated. Haiku costs about 1/36 of Opus, so it's the choice for categorization.
+     Before switching I'd repeat the run, add cases, and evaluate the other task (judging exceptions) too. A batch job can trade latency for quality; an interactive one often can't.

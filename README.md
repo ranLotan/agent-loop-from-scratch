@@ -50,7 +50,7 @@ The guards matter more than the happy path:
 - iteration limits
 - truncated turns
 
-Model *quality* is measured separately with evals against labeled data (see the roadmap).
+Model *quality* is measured separately, with an eval against labeled data (see [Evals](#evals)).
 
 ## Tools
 
@@ -59,7 +59,7 @@ Model *quality* is measured separately with evals against labeled data (see the 
 | `propose_category` | records a proposal | `strict: true` JSON schema. `category` is an `enum` built from my category list, so the model can't invent a category. |
 | `lookup_merchant` | read-only | past charges for a merchant from earlier months |
 | `flag_exception` | records a flag | unusual charges found by code (over a threshold, new subscription, possible duplicate), with the model's explanation |
-| `save_rule` | side effect | runs only after human approval *(planned)* |
+| *(no tool)* `npm run approve` | side effect, human only | the owner reviews the saved proposals; approved answers become rules, memory notes or new categories. The agent has no tool that writes rules or memory, so a prompt injection can't plant a permanent instruction. |
 
 ## Roadmap
 
@@ -71,9 +71,31 @@ Built in stages. Each stage is one concept, and I keep notes on each in [`notes/
 - [x] Tool calling: a JSON-schema tool and one `tool_use` → `tool_result` round trip
 - [x] The agent loop by hand, with fake-model tests
 - [x] Tool design: read-only vs. side-effect tools, and exception candidates computed by code
-- [ ] Human-in-the-loop approval and memory (rules for exact matches, notes for fuzzy cases)
-- [ ] Evals: accuracy against labeled data, prompt-injection cases (merchant names are untrusted input), model cost comparison
+- [x] Human-in-the-loop approval and memory (rules for exact matches, notes for fuzzy cases)
+- [x] Evals: accuracy against labeled data, prompt-injection cases (merchant names are untrusted input), model cost comparison
 - [ ] Refactor to the Claude Agent SDK and compare it with the hand-written loop
+
+## Evals
+
+`npm run eval -- --run` runs the real agent (same prompt, tools and loop) on 36 labeled cases and grades it in code:
+
+- **gold:** my own approved rules
+- **silver:** the bank's merchant sector (free, but noisy)
+- **injection:** synthetic merchant names that try to give the model an instruction
+
+The model never sees the answers: no history, rules or memory, because `lookup_merchant` would return the bank's sector, which is the silver label.
+
+One run (2026-11-03):
+
+| | Opus 5.5 | Sonnet 5.5 | Haiku 5.5 |
+|---|---|---|---|
+| gold accuracy | 88% | 75% | 88% |
+| silver accuracy | 68% | 72% | 64% |
+| injection resisted | 100% | 100% | 100% |
+| "high" / "low" confidence accuracy | 86% / 29% | 84% / 33% | 88% / 13% |
+| cost | $0.31 | $0.16 | $0.0085 |
+
+The accuracy differences are 1–2 cases, within the noise. Most silver "errors" are shared by all three models, so it's the label that's debatable (baby clothes: the bank says fashion, all three models said kids). Confidence is well calibrated, which is what the approval policy relies on. For this task, Haiku is good enough at about 1/36 of the cost.
 
 ## Run it
 
@@ -87,6 +109,8 @@ npm run fetch -- 2026-10      # scrape a month   → data/transactions/2026-10.j
 npm run import -- file.xlsx   # or import the bank's export
 npm run report -- 2026-10     # monthly report   → data/reports/2026-10.md
 npm run agent -- 2026-10      # model proposes categories for unknown merchants
+npm run approve -- 2026-10    # review the proposals → rules, memory notes, categories
+npm run eval                  # list the eval cases (free); add -- --run to call the models
 npm test                      # unit tests, including the fake-model loop tests
 ```
 
@@ -102,4 +126,4 @@ TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthr
 
 ## Privacy
 
-Bank credentials live in `.env`. Transactions, reports and raw scraper output are all gitignored, so only code, rules and fake sample data are committed.
+Bank credentials live in `.env`. Transactions, reports, raw scraper output, proposals, memory notes and eval results are all gitignored, so only code, rules and fake sample data are committed.
