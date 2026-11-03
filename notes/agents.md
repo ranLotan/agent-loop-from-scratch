@@ -211,3 +211,56 @@ Each lesson has key points, then interview questions with the answers we settled
 4. Why does code find the exception candidates instead of the model scanning every transaction?
    - *Answer:* The checks are deterministic (thresholds, new merchant, duplicates), so code is exact, free, and testable.
      The model only judges the few candidates (9 instead of ~100 transactions), which is cheaper, and its job stays focused on what it's good at: is this actually unusual, and how do I explain it?
+
+## Lesson 5: Human-in-the-loop and memory
+
+**Key points**
+- **Where the human approves:**
+  - **A blocking tool inside the loop** (`request_approval`) fits live, interactive agents. Its cost: the run waits on a person, and long waits hit timeouts.
+  - **Approval outside the loop** fits batch work: the agent finishes and saves proposals (`data/proposals/YYYY-MM.json`), and the human reviews them later (`npm run approve`). No model is waiting.
+  - We chose outside, because a monthly review isn't a conversation.
+- **A human gate goes in front of anything permanent.** The agent only *proposes*; only an approval writes a rule, a note or a category.
+- **Three kinds of memory:**
+  - short-term: the `messages` array during a run
+  - rules (`rules.json`): exact, applied by **code**
+  - memory notes (`memory.md`): fuzzy, read by **the model** in its system prompt
+- **Rule or note?** A rule means "forever, without asking", so it's only safe when the merchant name says what was bought.
+  - Approve + high/medium confidence → a rule.
+  - Approve + low confidence (BIT, PAYBOX) → only a note. A rule would silently mis-categorize next month's charge.
+  - Change → a rule plus a correction note, so the model learns on *similar* merchants.
+- **Memory holds what code and schema can't express.**
+  - A note that repeats a rule ("owner created category X") or says nothing ("proposed X, chose X") is waste. It costs tokens on every run.
+- **Memory is bounded** (the newest 50 notes), and it's a plain file the owner can edit. Memory goes stale and has to be maintained.
+- **Memory poisoning:** if the agent could write its own memory, a prompt injection could plant a permanent instruction. Only human answers write memory.
+- **The schema is the owner's too.** The model can't invent categories: the `enum` keeps the report consistent. It may *suggest* one (`new_category_idea`), and the owner creates it in `approve`.
+- **The policy is a pure function** (`decide`): it reads its inputs, returns actions, and does no I/O. That makes it easy to test, and `approve.ts` does the I/O.
+- **The unknown pile shrinks:** one approve run added 8 rules, so next month code handles those merchants for free.
+
+**Mistakes from my attempt**
+- **Point 7, the duplicate-rule check:** I normalized only one side of the comparison (`"Netflix"` vs. `"netflix"`). Both sides need the same `normalizeMerchant`.
+- **The switch fell through:** a `case` without a `return` runs into the next case. Every case should end in a `return`.
+- **`decide` mutated its inputs:** `answer.category = ...` and `rules.categories.push(...)`.
+  - The mutation polluted the shared test fixture, so test 8d passed in the full run and failed when run alone (test order dependence).
+  - I also changed a test to match the bug. When a test fails, ask first whether the code is wrong or the test is.
+- **Green for the wrong reason:** a stub that throws on every input passes a "should throw" test.
+
+**Interview questions**
+1. Where would you put human approval in an agent, and why?
+   - *Answer:* In front of anything permanent or outward-facing. For interactive agents, a blocking approval tool inside the loop. For batch work, outside the loop: the agent saves proposals and a human reviews them later, so no model waits and nothing times out.
+     Watch for approval fatigue: if it asks too often, people approve without reading. Let code handle the clear cases, and ask about the uncertain ones.
+2. What's the difference between rules and memory in an agent?
+   - *Answer:* Rules are exact and applied by deterministic code: free, testable, and the agent isn't involved.
+     Memory is fuzzy context the model reads in its prompt: hints, past corrections, ambiguous cases.
+     Use a rule when the decision always holds (Netflix → entertainment), and a note when it depends (a BIT transfer can be anything).
+3. What are the risks of long-term memory, and how do you control them?
+   - *Answer:*
+     - **Growth:** memory is paid on every call, so bound it (the newest N notes).
+     - **Staleness and errors:** keep it in an editable format the owner can review.
+     - **Redundancy:** don't store what rules or the schema already say.
+     - **Poisoning:** never let the agent write memory from untrusted input. Only human-approved notes are saved.
+4. Should an agent be able to extend its own output schema (e.g. add categories)?
+   - *Answer:* No. It can propose a change, and a human approves it. Otherwise the taxonomy fragments (the same thing under four names) and totals stop being comparable.
+     Keep the model constrained with an enum, add a separate "suggestion" field, and let the owner create the category.
+5. Why make the approval policy a pure function?
+   - *Answer:* It's the part with the most edge cases, so it needs the most tests. A pure function (inputs → actions, no I/O, no mutation) is trivial to test and gives the same result every run (`today` is passed in, not `new Date()`).
+     Mutating the inputs causes bugs that depend on call order, and they can even hide in tests.
