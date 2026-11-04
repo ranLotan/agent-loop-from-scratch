@@ -1,3 +1,7 @@
+---
+study: true
+chapter: Agents
+---
 # Agents: interview cheat sheet
 
 Built lesson by lesson while adding the agent to cal-expense-agent.
