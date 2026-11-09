@@ -5,9 +5,9 @@
 - Get a running local dashboard that **reads** existing data. No writes.
 
 ## Scope
-- npm workspaces at the root: `apps/web`, `apps/api`. The existing root scripts are unchanged.
+- npm workspaces at the root: `apps/web`, `apps/api`. The existing CLI scripts are unchanged; `test` and `typecheck` also cover `apps/`.
 - `apps/api`: Express 5 bound to `127.0.0.1:3000`, read-only, calling the existing core:
-  - `GET /api/months` → `listMonths` (current + previous year)
+  - `GET /api/months` → `listAllMonths` (every imported month, any year; the one addition to `src/store.ts`)
   - `GET /api/months/:month/summary` → `summarize(categorize(loadTransactions(month), loadRules()))`, plus the previous month's summary for comparison
   - `GET /api/months/:month/transactions` → `categorize(...)` rows
 - `apps/web`: Vite + React + TypeScript + React Router, with the Vite proxy `/api` → `127.0.0.1:3000`.

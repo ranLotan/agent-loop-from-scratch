@@ -7,3 +7,6 @@ data/raw/
 data/proposals/
 data/memory.md
 data/evals/
+
+# Build output
+apps/web/dist/

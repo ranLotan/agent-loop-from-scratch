@@ -48,3 +48,35 @@ Each lesson has key points, then interview questions with the answers we settled
    - ⚠️ "Binds to loopback" is not "filters by IP": the port simply isn't reachable from the LAN.
 
 ---
+
+## Lesson 1: A thin local API over an existing core
+
+**Key points**
+- **npm workspaces:** one repo with several packages (`"workspaces": ["apps/*"]`), one install, one lockfile, hoisted `node_modules`. `-w apps/web` runs a command inside one package.
+  - Each app declares only its own dependencies: the API never pulls in React, and the web app never pulls in Express.
+- **Build vs start:** `createApp(deps)` in `apps/api/src/app.ts` builds the app, and `server.ts` calls `listen()`. Tests start it on port `0` (any free port) with fake `deps`, the same dependency injection as `runLoop`'s `ModelClient`.
+- **Thin routes:** validate → call the core → map to HTTP (400 bad input, 404 missing, JSON). No math in routes, so the dashboard can't disagree with `npm run report`; both call `summarize()`.
+- **Middleware order:** handlers run in registration order. Host check first, then body parsing, routes, a JSON 404, and the error handler last. Express 5 sends thrown or rejected route errors to the 4-argument error handler automatically.
+- **Host-header defense:** the API rejects requests whose Host isn't `localhost`/`127.0.0.1`. Browser JS can't fake the header, and neither can Node's `fetch`: `Host` is a forbidden header, dropped silently. Tests use `http.request`.
+- **Smoke test vs real test:** a throwaway "does it turn on" check while building, vs committed assertions in `npm test` that guard the contract forever.
+- **In this project:** the API recomputes reports on every request, while the saved `data/reports/2026-10.md` turned out to be stale (it held 2026-09's numbers). That's why derived data shouldn't be stored as a source of truth.
+
+**Interview questions**
+1. Why split `createApp(deps)` from `listen()` instead of one `server.ts` that does both? What does that give you?
+   - *Answer:* Building the app and starting it are separate jobs. `createApp(deps)` returns a configured app without opening a port, so a test can start it on port 0 with fake data and close it afterward, with no collision with a running dev server and no dependency on real files.
+     The dependencies are injected, so the same routes run against the real store in `server.ts` and in-memory fixtures in tests. It's the same idea as passing a fake `ModelClient` to `runLoop`.
+   - ⚠️ "Why not mock the store module?" Module mocking ties tests to file paths and import order. A parameter is explicit and type-checked.
+2. In an Express app, why does the order of `app.use(...)` calls matter? Give an example where the wrong order is a bug.
+   - *Answer:* Express runs middleware and routes in the order they're registered, and a handler that responds without calling `next()` ends the chain. So order is behavior.
+     If the Host check came after the routes, those routes would answer first and the guard would never run, with no error to show it. The same goes for the catch-all 404, which has to come after the routes, and the error handler, which has to be last.
+   - ⚠️ A test protects this: `Host check: foreign host → 403` fails if the guard moves below the routes.
+3. A teammate wants to calculate category totals directly in the Express route or in React because "it's just a reduce." What's wrong with that, and what do you do instead?
+   - *Answer:* Each layer has one job: React displays, the route validates the request and maps the result to HTTP, and a core function does the calculation. If totals are also computed in a route or in React, two implementations drift apart and the dashboard can disagree with the CLI report.
+     It's rarely "just a reduce": ours keeps totals per currency and rounds them, so a plain sum would add shekels to euros. So I call `summarize()` from one place, test it as a pure function, and every front door returns the same numbers.
+   - ⚠️ Display formatting can live in React. Business math can't.
+4. You test your Host check using `fetch` with a fake `Host: evil.com` header, and it returns 200 instead of 403. What happened, and what does it tell you about the defense?
+   - *Answer:* `Host` is a forbidden header, so `fetch` silently dropped mine and sent the real `127.0.0.1` host, which the guard correctly allowed. The test was wrong, not the guard.
+     A missing or misplaced guard would also give 200, so I confirmed with a raw `http.request`, which can set any Host and got 403. It also shows why the defense works: JavaScript in a browser can't forge that header either.
+   - ⚠️ A test result only means something if the request really is what you think you sent.
+
+---

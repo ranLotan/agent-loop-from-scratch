@@ -1,0 +1,5 @@
+{
+  // Same strict settings as the CLI; the API imports the core from ../../src directly.
+  "extends": "../../tsconfig.json",
+  "include": ["src"]
+}

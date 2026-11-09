@@ -120,9 +120,19 @@ There's no real data in the repo. To try the pipeline without a bank account, us
 npm run import -- samples/cal-sample.csv 1999-01 && npm run report -- 1999-01
 ```
 
+## Run the dashboard
+
+A local, read-only dashboard over the same data, using the same categorize and report code as the CLI.
+
+```bash
+npm run dev                   # API on 127.0.0.1:3000 + web on localhost:5173
+```
+
+Open http://localhost:5173. Import or fetch at least one month first. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
+
 ## Stack
 
-TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Opus 5.5), SheetJS, and `node:test`.
+TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Opus 5.5), SheetJS, and `node:test`. The dashboard uses React, Vite, React Router and Express 5.
 
 ## Privacy
 

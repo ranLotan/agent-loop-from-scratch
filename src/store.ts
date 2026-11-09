@@ -35,6 +35,16 @@ export function listMonths(year: string): string[] {
     .sort();
 }
 
+/** Every imported statement month, any year, sorted. Used by the dashboard API. */
+export function listAllMonths(): string[] {
+  const dir = join(DATA_DIR, "transactions");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^\d{4}-(0[1-9]|1[0-2])\.json$/.test(f))
+    .map((f) => f.slice(0, 7))
+    .sort();
+}
+
 /** All transactions from months before `month` (this year and last), oldest first. */
 export function loadHistory(month: string): Transaction[] {
   const year = Number(month.slice(0, 4));
