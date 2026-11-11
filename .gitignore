@@ -10,3 +10,6 @@ data/evals/
 
 # Build output
 apps/web/dist/
+
+# Local database
+data/app.db*

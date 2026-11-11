@@ -17,10 +17,16 @@ export function currencyCode(raw: string | undefined): string | undefined {
 export const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Same date+merchant+amount twice is legit (two coffees), so repeats are numbered. */
-export function assignIds(transactions: Omit<Transaction, "id">[]): Transaction[] {
+export function assignIds(transactions: Omit<Transaction, "id">[], billingMonth: string): Transaction[] {
   const seen = new Map<string, number>();
   return transactions.map((tx) => {
-    const key = `${tx.date}|${tx.merchant}|${tx.amount}|${tx.currency}`;
+    // M2, YOUR PART: the id must be unique across ALL months, because SQLite uses it as the primary key.
+    // TODO: add two more parts to this key:
+    //   1. billingMonth
+    //   2. the payment number: tx.installments?.number. A normal purchase has no installments,
+    //      so make that case an empty string (hint: ??).
+    // Tests: npm test (src/normalize.test.ts). Three of them are red until this is done.
+    const key = `${tx.date}|${tx.merchant}|${tx.amount}|${tx.currency}|${billingMonth}|${tx.installments?.number ?? ""}`;
     const occurrence = (seen.get(key) ?? 0) + 1;
     seen.set(key, occurrence);
     const id = createHash("sha1").update(`${key}|${occurrence}`).digest("hex").slice(0, 12);

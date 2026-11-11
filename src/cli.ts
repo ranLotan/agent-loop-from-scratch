@@ -28,11 +28,8 @@ function requireMonth(month: string | undefined): string {
 
 function runImport(file: string | undefined, monthArg: string | undefined) {
   if (!file) throw new Error(USAGE);
-  const { transactions, billingDate, checks, skipped } = importStatementFile(file);
-  if (!monthArg && !billingDate) {
-    throw new Error(`No billing date found in the file, so pass the statement month.\n\n${USAGE}`);
-  }
-  const month = requireMonth(monthArg ?? billingDate!.slice(0, 7));
+  const { transactions, billingDate, checks, skipped } = importStatementFile(file, monthArg);
+  const month = requireMonth(monthArg ?? billingDate!.slice(0, 7)); // importStatementFile throws if both are missing
 
   // Re-importing the same statement overwrites it, so the import is safe to repeat.
   const path = saveTransactions(month, transactions);

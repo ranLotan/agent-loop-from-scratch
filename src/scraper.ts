@@ -64,7 +64,7 @@ export function mapScrapedAccounts(accounts: Account[], month: string) {
       else kept.push(mapTxn(t, account.accountNumber));
     }
   }
-  return { transactions: assignIds(kept), pending, otherMonths };
+  return { transactions: assignIds(kept, month), pending, otherMonths };
 }
 
 /** Logs in to Cal with a headless browser and returns every card's transactions from `month` onward. */

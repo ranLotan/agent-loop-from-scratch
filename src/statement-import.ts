@@ -161,8 +161,9 @@ function parseSectionTotal(text: string) {
 /**
  * Walks the rows top to bottom. Cal's export has several sections (ILS billing,
  * then USD/EUR immediate debits), each with a title line (holding a total) and its own header row.
+ * `month` overrides the billing month printed in the file; ids depend on it.
  */
-export function parseStatement(rows: string[][], source: Transaction["source"]): ParsedStatement {
+export function parseStatement(rows: string[][], source: Transaction["source"], month?: string): ParsedStatement {
   const parsed: Omit<Transaction, "id">[] = [];
   const checks: ParsedStatement["checks"] = [];
   let billingDate: string | undefined;
@@ -219,20 +220,21 @@ export function parseStatement(rows: string[][], source: Transaction["source"]):
   }
   closeSection();
 
-  const transactions = assignIds(parsed);
-  if (!transactions.length) {
+  if (!parsed.length) {
     throw new Error(
       "No transactions found. Is there a header row with date, merchant and amount columns?\n" +
         `Recognized headers: ${JSON.stringify(COLUMN_ALIASES, null, 2)}`,
     );
   }
-  return { transactions, billingDate, checks, skipped };
+  const billingMonth = month ?? billingDate?.slice(0, 7);
+  if (!billingMonth) throw new Error("No billing date found in the file, so pass the statement month.");
+  return { transactions: assignIds(parsed, billingMonth), billingDate, checks, skipped };
 }
 
 /** Reads a Cal export: .xlsx as downloaded from the Cal site, or .csv as a fallback. */
-export function importStatementFile(path: string): ParsedStatement {
+export function importStatementFile(path: string, month?: string): ParsedStatement {
   const ext = extname(path).toLowerCase();
-  if (ext === ".xlsx" || ext === ".xls") return parseStatement(readXlsxRows(path), "xlsx");
-  if (ext === ".csv") return parseStatement(readCsvRows(readFileSync(path, "utf8")), "csv");
+  if (ext === ".xlsx" || ext === ".xls") return parseStatement(readXlsxRows(path), "xlsx", month);
+  if (ext === ".csv") return parseStatement(readCsvRows(readFileSync(path, "utf8")), "csv", month);
   throw new Error(`Unsupported file type "${ext}". Use the .xlsx from Cal, or a .csv.`);
 }

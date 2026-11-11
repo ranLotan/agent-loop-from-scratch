@@ -134,6 +134,13 @@ test("scraper mapping: sign, Israel dates, billing month, installments, same ids
   assert.deepEqual([flight.date, flight.amount, flight.originalAmount, flight.type], ["2026-06-29", 111, 333, "תשלומים"]);
 
   // Same purchase from the xlsx parser → same id, so the two sources can be compared row by row.
-  const xlsxShuk = parseStatement(STATEMENT, "xlsx").transactions[0];
-  assert.equal(shuk.id, xlsxShuk.id);
+  const fromXlsx = parseStatement(STATEMENT, "xlsx").transactions;
+  assert.equal(shuk.id, fromXlsx[0].id);
+  assert.equal(flight.id, fromXlsx[2].id, "the same installment payment gets the same id from both sources");
+});
+
+test("statement import needs a billing month: from the file, or passed in", () => {
+  const noBillingDate = STATEMENT.filter((row) => !row[0].includes("לחיוב"));
+  assert.throws(() => parseStatement(noBillingDate, "xlsx"), /No billing date/);
+  assert.equal(parseStatement(noBillingDate, "xlsx", "2026-09").transactions.length, 4);
 });
