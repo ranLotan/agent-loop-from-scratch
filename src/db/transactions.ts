@@ -78,6 +78,25 @@ export function upsertTransactions(
       :original_amount, :original_currency, :type, :installment_number, :installment_total,
       :sector, :memo, :card, :source, :import_batch_id, :updated_at
     )
+    ON CONFLICT (id) DO UPDATE SET
+      billing_month       = excluded.billing_month,
+      position            = excluded.position,
+      date                = excluded.date,
+      merchant            = excluded.merchant,
+      normalized_merchant = excluded.normalized_merchant,
+      amount              = excluded.amount,
+      currency            = excluded.currency,
+      original_amount     = excluded.original_amount,
+      original_currency   = excluded.original_currency,
+      type                = excluded.type,
+      installment_number  = excluded.installment_number,
+      installment_total   = excluded.installment_total,
+      sector              = excluded.sector,
+      memo                = excluded.memo,
+      card                = excluded.card,
+      source              = excluded.source,
+      import_batch_id     = excluded.import_batch_id,
+      updated_at          = excluded.updated_at
   `);
 
   const now = new Date().toISOString();
