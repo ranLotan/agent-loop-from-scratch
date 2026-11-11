@@ -80,3 +80,49 @@ Each lesson has key points, then interview questions with the answers we settled
    - ⚠️ A test result only means something if the request really is what you think you sent.
 
 ---
+
+## Lesson 2: Moving to a database: migrations, idempotency, identity
+
+**Key points**
+- **Schema migrations:** versioned, ordered scripts that change the schema, tracked in a table so each runs exactly once per database.
+  - Forward-only: never edit one that has already run; add the next number. Each runs in a transaction. They live in git like code.
+  - Why: every copy of the database (dev, test, a colleague's) reaches the same schema the same way.
+- **Idempotency:** doing an operation twice has the same effect as doing it once. Essential for imports, retries, and anything a user can click twice.
+  - Tools: a stable key per row, a unique constraint plus an upsert (`INSERT … ON CONFLICT DO UPDATE`), a content hash to skip an identical file, and a transaction so a failed run can be retried.
+- **Upsert, and who owns each column:** on conflict, refresh only the columns the *source* owns, never the ones the *user* owns (their edits), or a re-import wipes manual work.
+- **Identity (primary keys):** a surrogate key (auto-increment, UUID) has no meaning; a deterministic key is derived from the data (a hash of identifying fields). Imports need the deterministic kind so the same real-world row always maps to the same id.
+  - The risk: fields that don't really identify a row make two rows collide, and the upsert silently overwrites one. Check row count against distinct keys on real data.
+- **Transactions (atomicity):** a multi-step write completes fully or not at all; a crash midway leaves nothing half-done.
+- **Soft delete vs hard delete:** a soft delete keeps the row and sets a marker (usually `deleted_at`); a hard delete removes it. Soft keeps history, edits and undo, at the cost of filtering every query.
+- **The persistence seam (repository):** callers use `loadX()`/`saveX()`, never SQL, so swapping storage changes one module and existing tests guard the switch.
+- **Long-running work over HTTP:** return 202 Accepted with a job id, then the client polls or gets pushed updates (SSE/WebSockets). Job state in memory for one process; a queue or table once there are restarts or several workers.
+- **In this project:** `src/db/migrations/` + `schema_version`, `upsertTransactions` in `src/db/transactions.ts`, the id hash in `assignIds` (`src/normalize.ts`), import batches and `missing_since_batch_id` (a soft delete) in `src/db/imports.ts`, `store.ts` as the seam, and `POST /api/scrape` → 202 + `GET /api/jobs/:id`. On real data the old id collided (376 rows, 372 ids); the new one gives 376.
+
+**Interview questions**
+1. What is a database migration, and why is the rule "never edit a migration that has already run"?
+   - *Answer:* A migration is a versioned, ordered script that changes the database schema, kept in git and tracked in a table so each one runs exactly once per database.
+     Because the runner skips migrations it has already recorded, editing one means existing databases never get the change while new ones do.
+     You end up with databases at the same version but different schemas, and nothing warns you. So any change goes in a new migration that every database applies from its current state.
+   - ⚠️ Rollbacks: many teams write forward-only fix migrations instead of "down" scripts, because rolling back can lose data written in between.
+2. What does "idempotent" mean, and how would you make a data import idempotent?
+   - *Answer:* Idempotent means doing it twice has the same effect as doing it once, so re-importing the same data doesn't create duplicates.
+     I give each row a stable key derived from its data, put a unique constraint on it, and write with an upsert, so a repeated row updates instead of duplicating.
+     I also store a hash of each imported file to skip exact repeats, and run each import in a transaction so a failed run can simply be retried.
+   - ⚠️ The same idea covers retries: a client that times out and resends a payment request uses an idempotency key.
+3. When importing data from an external source, how do you choose a primary key, and what can go wrong?
+   - *Answer:* I use a deterministic key: a hash of the fields that identify the row and stay the same on every import and from every source. Then a re-import maps to the same row, unlike an auto-increment id that would just create a duplicate.
+     The risk is collisions when the fields aren't actually unique: two different rows get the same key and an upsert silently overwrites one.
+     I verify on real data by comparing rows to distinct keys, and add a field or an occurrence counter where needed.
+   - ⚠️ "What about hash collisions?" At this scale they're negligible; the real risk is hashing too few fields.
+4. A user clicks a button that starts a task taking about 30 seconds on the server. How do you design that request?
+   - *Answer:* I don't keep the request open, because it can time out and blocks the user. The server starts a background job and immediately returns 202 Accepted with a job id.
+     The client polls `GET /jobs/:id` until it's done or failed, or I push updates with Server-Sent Events or WebSockets (SignalR in .NET).
+     Job state can live in memory for one process; with restarts or several servers it moves to a queue or a database. I also stop duplicate starts, for example 409 with the running job's id.
+   - ⚠️ Polling is simplest for one user or rare checks; push wins with frequent updates or many clients.
+5. Soft delete versus hard delete: what's the difference, and when would you choose each?
+   - *Answer:* A hard delete removes the row; a soft delete keeps it and sets a marker, usually a `deleted_at` timestamp, and normal queries filter those rows out.
+     I choose soft delete when I need undo, audit history, or to keep data other rows or user edits depend on. I choose hard delete when the data must truly be gone, for privacy or compliance, or isn't worth keeping.
+     The cost of soft delete is that every query must filter the marked rows, and missing that filter once is a common bug.
+   - ⚠️ Put the filter in one place (a view or a repository function like `loadTransactions()`) so callers can't forget it.
+
+---
