@@ -48,8 +48,8 @@ function cellText(cell: XLSX.CellObject | undefined): string {
   return cell.w ?? String(cell.v ?? "");
 }
 
-function readXlsxRows(path: string): string[][] {
-  const wb = XLSX.read(readFileSync(path), { cellNF: true });
+function readXlsxRows(bytes: Buffer): string[][] {
+  const wb = XLSX.read(bytes, { cellNF: true });
   const rows: string[][] = [];
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
@@ -231,10 +231,22 @@ export function parseStatement(rows: string[][], source: Transaction["source"], 
   return { transactions: assignIds(parsed, billingMonth), billingDate, checks, skipped };
 }
 
+/** The file types a statement can come in, by extension. */
+export function statementSource(fileName: string): "xlsx" | "csv" {
+  const ext = extname(fileName).toLowerCase();
+  if (ext === ".xlsx" || ext === ".xls") return "xlsx";
+  if (ext === ".csv") return "csv";
+  throw new Error(`Unsupported file type "${ext}". Use the .xlsx from Cal, or a .csv.`);
+}
+
+/** Parses a Cal export from its bytes (a file on disk, or an upload). The name gives the type. */
+export function parseStatementBytes(bytes: Buffer, fileName: string, month?: string): ParsedStatement {
+  const source = statementSource(fileName);
+  const rows = source === "xlsx" ? readXlsxRows(bytes) : readCsvRows(bytes.toString("utf8"));
+  return parseStatement(rows, source, month);
+}
+
 /** Reads a Cal export: .xlsx as downloaded from the Cal site, or .csv as a fallback. */
 export function importStatementFile(path: string, month?: string): ParsedStatement {
-  const ext = extname(path).toLowerCase();
-  if (ext === ".xlsx" || ext === ".xls") return parseStatement(readXlsxRows(path), "xlsx", month);
-  if (ext === ".csv") return parseStatement(readCsvRows(readFileSync(path, "utf8")), "csv", month);
-  throw new Error(`Unsupported file type "${ext}". Use the .xlsx from Cal, or a .csv.`);
+  return parseStatementBytes(readFileSync(path), path, month);
 }

@@ -23,7 +23,7 @@ const stats = { categories: 0, rules: 0, notes: 0, skipped: 0 };
 
 function markReviewed(key: string) {
   file!.reviewed.push(key);
-  saveProposals(month, file); // save after every answer, so quitting halfway loses nothing
+  saveProposals(month, file!); // save after every answer, so quitting halfway loses nothing
 }
 
 async function ask(p: CategoryProposal): Promise<Answer | "quit"> {

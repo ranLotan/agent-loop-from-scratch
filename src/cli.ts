@@ -1,16 +1,11 @@
-import { importStatementFile } from "./statement-import";
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { categorize, validateRules } from "./categorize";
-import { renderAnnualMarkdown, renderMarkdown, summarize, totalsByCurrency } from "./report";
-import { mapScrapedAccounts, scrapeCal } from "./scraper";
-import {
-  listMonths,
-  loadRules,
-  loadTransactions,
-  rawPath,
-  saveRaw,
-  saveReport,
-  saveTransactions,
-} from "./store";
+import type { ImportResult } from "./db/imports";
+import { fetchMonth, importStatement } from "./imports";
+import { isMonth } from "./normalize";
+import { renderAnnualMarkdown, renderMarkdown, summarize } from "./report";
+import { databaseLabel, listMonths, loadRules, loadTransactions, saveReport } from "./store";
 import type { Transaction } from "./types";
 
 const USAGE = `Usage:
@@ -20,27 +15,40 @@ const USAGE = `Usage:
   npm run annual -- <YYYY>                           Summarize all imported months of a year`;
 
 function requireMonth(month: string | undefined): string {
-  if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+  if (!month || !isMonth(month)) {
     throw new Error(`Expected a month like 2026-09, got "${month ?? ""}".\n\n${USAGE}`);
   }
   return month;
 }
 
+const showRows = (label: string, list: Transaction[]) =>
+  list.slice(0, 10).forEach((t) => console.log(`  ${label} ${t.date} ${t.merchant} ${t.amount} ${t.currency}`));
+
+/** What an import did to the month, shared by import and fetch. */
+function printImportResult(r: ImportResult, month: string) {
+  if (r.duplicate) {
+    console.log(`This exact file was imported before (batch ${r.batchId}); nothing changed.`);
+    return;
+  }
+  console.log(`${month} → ${databaseLabel()}: ${r.added} new, ${r.updated} updated, ${r.missing.length} no longer on the statement`);
+  if (r.missing.length) console.log("Rows the new import doesn't have are kept, but left out of reports:");
+  showRows("missing:", r.missing);
+}
+
 function runImport(file: string | undefined, monthArg: string | undefined) {
   if (!file) throw new Error(USAGE);
-  const { transactions, billingDate, checks, skipped } = importStatementFile(file, monthArg);
-  const month = requireMonth(monthArg ?? billingDate!.slice(0, 7)); // importStatementFile throws if both are missing
+  if (monthArg !== undefined) requireMonth(monthArg);
+  const r = importStatement(readFileSync(file), basename(file), monthArg);
 
-  // Re-importing the same statement overwrites it, so the import is safe to repeat.
-  const path = saveTransactions(month, transactions);
-  console.log(`Imported ${transactions.length} transactions for ${month} → ${path}`);
-  if (billingDate) console.log(`Billing date on statement: ${billingDate}`);
-  for (const c of checks) {
+  console.log(`Read ${r.count} transactions for ${r.month} from ${r.fileName}`);
+  if (r.billingDate) console.log(`Billing date on statement: ${r.billingDate}`);
+  for (const c of r.checks) {
     const ok = Math.abs(c.expected - c.actual) < 0.01;
     console.log(`${ok ? "✓" : "✗"} ${c.currency} section total ${c.expected} vs rows ${c.actual}  (${c.section})`);
   }
-  if (skipped) console.log(`Skipped ${skipped} non-transaction rows (titles, footers, totals).`);
-  if (checks.some((c) => Math.abs(c.expected - c.actual) >= 0.01)) {
+  if (r.skipped) console.log(`Skipped ${r.skipped} non-transaction rows (titles, footers, totals).`);
+  printImportResult(r, r.month);
+  if (!r.checksOk) {
     console.log("Warning: a section total doesn't match its rows; the parser may be misreading the file.");
     process.exitCode = 1;
   }
@@ -89,37 +97,19 @@ async function runFetch(args: string[]) {
   }
 
   console.log(`Logging in to Cal and fetching ${month}... (takes ~30s)`);
-  const accounts = await scrapeCal(month, {
-    showBrowser: args.includes("--show"),
-    failureScreenshotPath: rawPath("failure.png"),
-  });
-  const rawFile = saveRaw(`${month}.json`, accounts);
-  const { transactions, pending, otherMonths } = mapScrapedAccounts(accounts, month);
-  const previous = loadTransactions(month);
-  const path = saveTransactions(month, transactions);
+  const r = await fetchMonth(month, { showBrowser: args.includes("--show") });
 
-  const cards = [...new Set(transactions.map((t) => t.card))].join(", ");
-  console.log(`Fetched ${transactions.length} transactions billed in ${month} (cards: ${cards || "none"}) → ${path}`);
-  console.log(`Raw scraper output → ${rawFile}`);
-  console.log(`Ignored: ${pending} pending, ${otherMonths} billed in other months.`);
+  console.log(`Fetched ${r.count} transactions billed in ${month} (cards: ${r.cards.join(", ") || "none"})`);
+  console.log(`Raw scraper output → ${r.rawFile}`);
+  console.log(`Ignored: ${r.pending} pending, ${r.otherMonths} billed in other months.`);
 
   // If this month was imported before (e.g. from the xlsx), show whether both sources agree.
-  if (previous) {
-    const [before, after] = [totalsByCurrency(previous), totalsByCurrency(transactions)];
-    for (const c of new Set([...Object.keys(before), ...Object.keys(after)])) {
-      const ok = Math.abs((before[c] ?? 0) - (after[c] ?? 0)) < 0.01;
-      console.log(`${ok ? "✓" : "✗"} ${c}: previous ${before[c] ?? 0} vs fetched ${after[c] ?? 0}`);
-    }
-    const newIds = new Set(transactions.map((t) => t.id));
-    const oldIds = new Set(previous.map((t) => t.id));
-    const onlyOld = previous.filter((t) => !newIds.has(t.id));
-    const onlyNew = transactions.filter((t) => !oldIds.has(t.id));
-    console.log(`Same id in both: ${transactions.length - onlyNew.length} of ${transactions.length}`);
-    const show = (label: string, list: Transaction[]) =>
-      list.slice(0, 10).forEach((t) => console.log(`  ${label} ${t.date} ${t.merchant} ${t.amount} ${t.currency}`));
-    show("only previous:", onlyOld);
-    show("only fetched: ", onlyNew);
+  for (const c of r.comparison ?? []) {
+    const ok = Math.abs(c.before - c.after) < 0.01;
+    console.log(`${ok ? "✓" : "✗"} ${c.currency}: previous ${c.before} vs fetched ${c.after}`);
   }
+  printImportResult(r, month);
+  showRows("only fetched:", r.onlyFetched);
 }
 
 const [command, ...args] = process.argv.slice(2);

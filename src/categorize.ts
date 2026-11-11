@@ -11,7 +11,7 @@ export function validateRules(rules: RulesFile): void {
   const bad = rules.rules.filter((r) => !known.has(r.category));
   if (bad.length) {
     const list = bad.map((r) => `  "${r.merchant}" → "${r.category}"`).join("\n");
-    throw new Error(`rules.json has rules with unknown categories (add them to "categories"):\n${list}`);
+    throw new Error(`Some rules use unknown categories (add the categories first):\n${list}`);
   }
 }
 

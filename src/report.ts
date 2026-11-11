@@ -126,7 +126,7 @@ export function renderMarkdown(month: string, s: Summary): string {
       "",
       "## Uncategorized merchants",
       "",
-      "No rule matched and Cal gave no sector. Add them to `data/rules.json` (later, the agent will propose categories).",
+      "No rule matched and Cal gave no sector. Run `npm run agent` to get proposals, then `npm run approve` to turn them into rules.",
       "",
       "| Merchant | Amount | Txns |",
       "|---|---:|---:|",

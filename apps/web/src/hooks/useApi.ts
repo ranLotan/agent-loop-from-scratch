@@ -1,5 +1,3 @@
-// M1, YOUR PART: the useApi hook.
-//
 // A custom hook is a plain function whose name starts with "use" and which calls other hooks.
 // Usage:  const { data, error, loading } = useApi(() => api.summary(month), [month]);
 //
@@ -14,15 +12,13 @@ export interface ApiState<T> {
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: DependencyList): ApiState<T> {
-  // TODO 1: keep the three values in state. For example:
-   const [data, setData] = useState<T | null>(null);
-   const [error, setError] = useState<string | null>(null);
-   const [loading, setLoading] = useState<boolean>(true);
-  //   ...the same for error (string | null) and loading (boolean, starts true).
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // TODO 2: call useEffect(() => { ... }, deps). Inside the effect:
   useEffect(() => {
-    let ignore = false; 
+    // Each run gets its own flag; the cleanup sets it when deps change, so a late, stale response is ignored.
+    let ignore = false;
     setError(null);
     setLoading(true);
     fn()

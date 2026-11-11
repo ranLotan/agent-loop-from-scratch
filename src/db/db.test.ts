@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import type { Transaction } from "../types";
@@ -25,9 +26,10 @@ const MINIMAL: Transaction = { id: "min", date: "2026-09-02", merchant: "Shop", 
 const count = (db: DatabaseSync, table: string) => db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()!.n;
 
 test("migrations run once and are safe to repeat", () => {
+  const files = readdirSync(new URL("./migrations", import.meta.url)).filter((f) => f.endsWith(".sql"));
   const db = openDb(":memory:");
   runMigrations(db);
-  assert.equal(count(db, "schema_version"), 1);
+  assert.equal(count(db, "schema_version"), files.length);
 });
 
 test("foreign keys are enforced", () => {

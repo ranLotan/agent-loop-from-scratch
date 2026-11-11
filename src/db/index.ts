@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations", import.meta.url));
 const DEFAULT_PATH = fileURLToPath(new URL("../../data/app.db", import.meta.url));
 
-/** Runs `work` as one all-or-nothing database transaction. */
+/** Runs `work` as one all-or-nothing database transaction. Inside another one, it joins it. */
 export function inTransaction<T>(db: DatabaseSync, work: () => T): T {
+  if (db.isTransaction) return work(); // SQLite can't nest BEGIN; the outer transaction decides
   db.exec("BEGIN");
   try {
     const result = work();

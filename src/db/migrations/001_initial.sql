@@ -77,8 +77,9 @@ CREATE TABLE agent_proposals (
   confidence          TEXT NOT NULL CHECK (confidence IN ('high', 'medium', 'low')),
   reason              TEXT NOT NULL,
   new_category_idea   TEXT,
+  -- 'answered': migrated from JSON, which only recorded that it was answered, not how.
   status              TEXT NOT NULL DEFAULT 'pending'
-                      CHECK (status IN ('pending', 'approved', 'changed', 'new_category', 'noted', 'skipped')),
+                      CHECK (status IN ('pending', 'approved', 'changed', 'new_category', 'noted', 'skipped', 'answered')),
   answer_json         TEXT,
   answered_at         TEXT,
   UNIQUE (run_id, normalized_merchant)

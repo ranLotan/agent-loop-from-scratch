@@ -104,10 +104,12 @@ Requires Node 22+.
 ```bash
 npm install
 cp .env.example .env          # Cal login + ANTHROPIC_API_KEY
+npm run migrate               # create data/app.db (SQLite) and seed the categories
 
-npm run fetch -- 2026-10      # scrape a month   → data/transactions/2026-10.json
-npm run import -- file.xlsx   # or import the bank's export
+npm run fetch -- 2026-10      # scrape a month   → data/app.db
+npm run import -- file.xlsx   # or import the bank's export (the same file twice is a no-op)
 npm run report -- 2026-10     # monthly report   → data/reports/2026-10.md
+npm run export                # back up your rules → data/rules.json (gitignored)
 npm run agent -- 2026-10      # model proposes categories for unknown merchants
 npm run approve -- 2026-10    # review the proposals → rules, memory notes, categories
 npm run eval                  # list the eval cases (free); add -- --run to call the models
@@ -117,23 +119,25 @@ npm test                      # unit tests, including the fake-model loop tests
 There's no real data in the repo. To try the pipeline without a bank account, use the fake statement:
 
 ```bash
-npm run import -- samples/cal-sample.csv 1999-01 && npm run report -- 1999-01
+npm run migrate && npm run import -- samples/cal-sample.csv 1999-01 && npm run report -- 1999-01
 ```
+
+**Moving from the JSON files:** before the database, data lived in `data/transactions/*.json`, `data/rules.json` and `data/proposals/*.json`. `npm run migrate` copies all of it into `data/app.db` and checks every month's totals. It's safe to repeat, and it never changes the JSON files.
 
 ## Run the dashboard
 
-A local, read-only dashboard over the same data, using the same categorize and report code as the CLI.
+A local dashboard over the same database, using the same categorize, report and import code as the CLI.
 
 ```bash
 npm run dev                   # API on 127.0.0.1:3000 + web on localhost:5173
 ```
 
-Open http://localhost:5173. Import or fetch at least one month first. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
+Open http://localhost:5173. **Dashboard** and **Transactions** show one month. **Imports** uploads a Cal xlsx/csv, fetches a month from Cal (a ~30 s background job, using the login in `.env`), and lists every import. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Stack
 
-TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Opus 5.5), SheetJS, and `node:test`. The dashboard uses React, Vite, React Router and Express 5.
+TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Opus 5.5), SheetJS, SQLite (Node's built-in `node:sqlite`), and `node:test`. The dashboard uses React, Vite, React Router and Express 5.
 
 ## Privacy
 
-Bank credentials live in `.env`. Transactions, reports, raw scraper output, proposals, memory notes and eval results are all gitignored, so only code, rules and fake sample data are committed.
+Bank credentials live in `.env`. The database (`data/app.db`), the rules backup, reports, raw scraper output, memory notes and eval results are all gitignored, so only code and fake sample data (`samples/`, `data/rules.example.json`) are committed.

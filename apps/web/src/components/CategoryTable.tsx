@@ -1,5 +1,3 @@
-// M1, YOUR PART: the category table.
-//
 // Props: `summary` is this month, `previous` is last month's summary, or null when there's none.
 // Each row in summary.byCategory looks like: { category: "מסעדות", totals: { ILS: 120.5, EUR: 10 }, count: 3 }
 
@@ -11,28 +9,9 @@ interface CategoryTableProps {
   previous: Summary | null;
 }
 
+/** Spending per category: ₪ amount, share of ₪, change from last month, foreign amounts, count. */
 export function CategoryTable({ summary, previous }: CategoryTableProps) {
-  // TODO 1: return a <table className="data-table"> with a <thead> and these 6 columns:
-  //   Category | ₪ | Share | vs last month | Other currencies | Txns
-  
-  // TODO 2: in the <tbody>, turn summary.byCategory into rows with .map.
-  //   Give each <tr> a key. Which field is unique and stable here?
-  //   Show:
-  //     Category          row.category. Use <td dir="auto">, so Hebrew reads right-to-left.
-  //     ₪                 formatMoney(row.totals.ILS ?? 0)
-  //     Share             formatShare(row.totals.ILS ?? 0, summary.totals.ILS ?? 0)
-  //     Other currencies  formatForeign(row.totals)
-  //     Txns              row.count
-  //   Number cells: <td className="num">.
-
-  // TODO 3: the "vs last month" cell.
-  //   If there's no `previous`, show "—".
-  //   Otherwise find this category in previous.byCategory (hint: .find), take its ILS total,
-  //   and show formatDelta(thisMonth - lastMonth).
-  //   A category that didn't exist last month counts as 0 (hint: ?. and ??).
-  //   Tip: a .map callback can have a { body } with a `const` and a return, when one expression isn't enough.
-
-  // TODO 4: remove this placeholder and return your table.
+  // A category that didn't exist last month counts as 0 there.
   return <table className="data-table">
     <thead>
       <tr>

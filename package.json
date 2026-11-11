@@ -18,6 +18,8 @@
     "agent": "tsx src/agent/run.ts",
     "approve": "tsx src/agent/approve.ts",
     "eval": "tsx src/eval/run.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "export": "tsx src/db/export.ts",
     "test": "tsx --test src/*.test.ts src/agent/*.test.ts src/eval/*.test.ts src/db/*.test.ts apps/api/src/*.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/api && tsc --noEmit -p apps/web"
   },

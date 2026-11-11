@@ -1,12 +1,28 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ProposalsFile } from "./agent/proposals";
+import * as importsDb from "./db/imports";
+import type { BatchInfo, ImportBatch, ImportResult } from "./db/imports";
+import { openDb } from "./db/index";
+import { loadProposalsFile, saveProposalsFile } from "./db/proposals";
+import * as rulesDb from "./db/rules";
+import * as transactionsDb from "./db/transactions";
 import type { Rule, RulesFile, Transaction } from "./types";
 
-/** All state lives as plain files under data/, so you can open and edit it by hand. */
+// The one place the rest of the code reads and writes state. Business data lives in SQLite
+// (data/app.db); memory notes, raw scraper output and reports stay plain files under data/.
+
 export const DATA_DIR = fileURLToPath(new URL("../data", import.meta.url));
 
-const transactionsPath = (month: string) => join(DATA_DIR, "transactions", `${month}.json`);
+let database: DatabaseSync | undefined;
+/** Opened on first use, so importing this module has no side effects. */
+function db(): DatabaseSync {
+  return (database ??= openDb());
+}
+const dbLabel = () => process.env.DB_PATH ?? "data/app.db";
+
 export const reportPath = (period: string) => join(DATA_DIR, "reports", `${period}.md`);
 
 function writeFile(path: string, content: string) {
@@ -14,35 +30,34 @@ function writeFile(path: string, content: string) {
   writeFileSync(path, content, "utf8");
 }
 
-export function saveTransactions(month: string, transactions: Transaction[]): string {
-  const path = transactionsPath(month);
-  writeFile(path, JSON.stringify(transactions, null, 2) + "\n");
-  return path;
+/**
+ * Records an import of a month and makes it the month's current rows: new rows added, known rows
+ * refreshed (edits kept), rows it no longer has marked missing. The same file twice changes nothing.
+ */
+export function importTransactions(month: string, transactions: Transaction[], info: BatchInfo): ImportResult {
+  return importsDb.importBatch(db(), month, transactions, info);
 }
 
+/** Every import, newest first. */
+export function listImports(): ImportBatch[] {
+  return importsDb.listImportBatches(db());
+}
+
+/** Where the business data lives, for messages. */
+export const databaseLabel = dbLabel;
+
 export function loadTransactions(month: string): Transaction[] | null {
-  const path = transactionsPath(month);
-  return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+  return transactionsDb.loadTransactions(db(), month);
 }
 
 /** Imported statement months for a year, sorted, e.g. ["2026-08", "2026-09"]. */
 export function listMonths(year: string): string[] {
-  const dir = join(DATA_DIR, "transactions");
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => new RegExp(`^${year}-(0[1-9]|1[0-2])\\.json$`).test(f))
-    .map((f) => f.slice(0, 7))
-    .sort();
+  return listAllMonths().filter((m) => m.startsWith(`${year}-`));
 }
 
 /** Every imported statement month, any year, sorted. Used by the dashboard API. */
 export function listAllMonths(): string[] {
-  const dir = join(DATA_DIR, "transactions");
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /^\d{4}-(0[1-9]|1[0-2])\.json$/.test(f))
-    .map((f) => f.slice(0, 7))
-    .sort();
+  return transactionsDb.listMonths(db());
 }
 
 /** All transactions from months before `month` (this year and last), oldest first. */
@@ -62,34 +77,18 @@ export function saveRaw(name: string, data: unknown): string {
   return path;
 }
 
-const rulesPath = () => join(DATA_DIR, "rules.json");
-
 export function loadRules(): RulesFile {
-  return JSON.parse(readFileSync(rulesPath(), "utf8"));
+  return rulesDb.loadRules(db());
 }
 
-/** Appends rules, keeping one rule per line so the file stays easy to read and diff by hand. */
+/** Adds rules approved by the owner. A merchant that already has a rule is skipped. */
 export function addRules(newRules: Rule[]): void {
-  const file = loadRules();
-  file.rules.push(...newRules);
-  writeRules(file);
+  rulesDb.addRules(db(), newRules, "approve");
 }
 
 /** Adds categories the owner created in `approve`. Existing names are ignored. */
 export function addCategories(names: string[]): void {
-  const file = loadRules();
-  const fresh = names.filter((n) => !file.categories.includes(n));
-  if (!fresh.length) return;
-  file.categories.push(...fresh);
-  writeRules(file);
-}
-
-function writeRules(file: RulesFile): void {
-  const categories = file.categories.map((c) => `    ${JSON.stringify(c)}`).join(",\n");
-  const rules = file.rules
-    .map((r) => `    { "merchant": ${JSON.stringify(r.merchant)}, "category": ${JSON.stringify(r.category)} }`)
-    .join(",\n");
-  writeFile(rulesPath(), `{\n  "categories": [\n${categories}\n  ],\n  "rules": [\n${rules}\n  ]\n}\n`);
+  rulesDb.addCategories(db(), names, "owner");
 }
 
 /** Long-term memory: human-approved notes the agent reads on every run. Gitignored. */
@@ -111,16 +110,15 @@ export function appendMemory(notes: string[]): void {
   writeFile(memoryPath(), current + notes.join("\n") + "\n");
 }
 
-/** What the agent proposed for a month, waiting for (or after) human review. Gitignored. */
-export const proposalsPath = (month: string) => join(DATA_DIR, "proposals", `${month}.json`);
-
-export function saveProposals<T>(month: string, data: T): string {
-  writeFile(proposalsPath(month), JSON.stringify(data, null, 2) + "\n");
-  return proposalsPath(month);
+/** Saves an agent run, or, for a run already saved, which of its items have been reviewed. */
+export function saveProposals<T extends ProposalsFile>(_month: string, data: T): string {
+  saveProposalsFile(db(), data);
+  return `${dbLabel()} (agent run for ${data.month})`;
 }
 
-export function loadProposals<T>(month: string): T | null {
-  return existsSync(proposalsPath(month)) ? JSON.parse(readFileSync(proposalsPath(month), "utf8")) : null;
+/** The newest agent run for a month, waiting for (or after) human review. */
+export function loadProposals<T extends ProposalsFile = ProposalsFile>(month: string): T | null {
+  return loadProposalsFile(db(), month) as T | null;
 }
 
 /** `period` is a month (2026-09) or a year (2026). */

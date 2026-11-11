@@ -1,5 +1,3 @@
-// M1, YOUR PART: the text filter.
-
 import { useState } from "react";
 import { api } from "../api";
 import { TransactionsTable } from "../components/TransactionsTable";
@@ -14,10 +12,7 @@ export function TransactionsPage() {
   if (error) return <p role="alert">Error: {error}</p>;
   if (loading || !data) return <p>Loading…</p>;
 
-  // TODO 2: replace this line. Keep the transactions whose merchant OR category contains the text,
-  //   ignoring upper/lower case (hint: .toLowerCase() and .includes()).
-  //   t.category can be null (hint: ?.). An empty search should keep every row.
-  //   This is a plain const, computed on each render. Don't put the result in useState.
+  // Derived on every render from data + searchText, so there's no second state to keep in sync.
   const visible = searchText === "" ? data : data.filter((t) =>
     t.merchant.toLowerCase().includes(searchText.toLowerCase()) ||
     (t.category && t.category.toLowerCase().includes(searchText.toLowerCase()))

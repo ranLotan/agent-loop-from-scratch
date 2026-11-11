@@ -10,7 +10,7 @@ It is now growing into a **local personal finance dashboard** (React + Express +
 - `israeli-bank-scrapers` (companyId: `visaCal`) to fetch transactions
 - Agent: a hand-written tool-use loop on the raw Claude Messages API (`@anthropic-ai/sdk`, `src/agent/loop.ts`). No agent framework. A refactor to the Claude Agent SDK is an optional future lesson.
 - Credentials in `.env` (never commit it; `.env` goes in `.gitignore`)
-- Dashboard (in progress): React + TypeScript + Vite + React Router (`apps/web`), Express 5 (`apps/api`), SQLite (local file under `data/`, gitignored)
+- Dashboard (in progress): React + TypeScript + Vite + React Router (`apps/web`), Express 5 (`apps/api`), SQLite via built-in `node:sqlite` (`data/app.db`, gitignored)
 
 ## Core design principle
 Deterministic code handles fetching, rule matching, totals, and report math.
@@ -22,14 +22,15 @@ The agent only handles judgment: proposing categories for unknown merchants and 
 - Pure functions stay pure (`categorize`, `summarize`, `findCandidates`, `decide`, `runLoop`). I/O sits at the edges (store/db, CLI, HTTP).
 - The agent never writes rules, categories or memory. Only a human approval (CLI `approve` or the dashboard) does, through `decide()` in `src/agent/review.ts`.
 - Existing CLI commands keep working until something explicitly replaces them.
+- All SQL lives in `src/db/`; everything else goes through `store.ts`. Schema changes are a new numbered file in `src/db/migrations/`: never edit a migration that has already run.
 
 ## Rules vs memory
-- **Rules** (`data/rules.json` today, SQLite later): exact merchant → category mappings, applied by plain code. No agent involved.
+- **Rules** (SQLite: `categories` + `merchant_rules`): exact merchant → category mappings, applied by plain code. No agent involved. `npm run export` writes a gitignored `data/rules.json` backup; `data/rules.example.json` (fake merchants) seeds a fresh clone.
 - **Memory** (`data/memory.md`): fuzzy notes the agent reads for context (for example "PAYPAL charges are ambiguous, always ask", or past decisions). Stays a human-editable Markdown file.
 - Flow: a transaction with no matching rule goes to the agent. The agent proposes a category, I approve it, and the approval saves a new rule (or a memory note if the case is fuzzy). Over time the unknown pile shrinks.
 
 ## Pipeline
-1. `fetch`: scrape Cal for a month and save `data/transactions/YYYY-MM.json`. Support manual Excel/CSV export from Cal as a fallback input.
+1. `fetch`: scrape Cal for a month and save it to SQLite as an import batch. Support manual Excel/CSV export from Cal as a fallback input (CLI `import`, or the dashboard's Imports page).
 2. `categorize`: apply rules (code only). Priority: my rule → Cal's sector (ענף) from the statement → uncategorized.
 3. `agent`: handle unmatched transactions and flag exceptions (above a threshold, new merchant, foreign currency, possible duplicate, new subscription).
 4. `approve`: CLI prompt to approve or re-categorize each suggestion (Todoist integration may come later).
@@ -56,7 +57,7 @@ The dashboard track has its own milestones (M0–M5) in `docs/roadmap.md`, with 
 - `npm test` (node:test) and `npm run typecheck` must pass after every change.
 - Agent control flow is tested with a fake model (`src/agent/loop.test.ts`). Approval policy is tested in `src/agent/review.test.ts`. Keep both.
 - Evals (`npm run eval`, `src/eval/`) stay working and keep testing the real prompt, tools and loop. Run `-- --run` (costs money) after changing the prompt, the tools, or the model.
-- New pure logic gets unit tests. API routes get tests against a temporary database.
+- New pure logic gets unit tests. Database code gets tests against `openDb(":memory:")` (or `DB_PATH=":memory:"` before importing `store.ts`). API routes get tests with fake `deps` passed to `createApp`.
 
 ## Working style
 I'm learning, so explain design decisions briefly as we go, and build one milestone at a time.

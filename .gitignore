@@ -13,3 +13,6 @@ apps/web/dist/
 
 # Local database
 data/app.db*
+
+# Real rules live in the database; `npm run export` writes this backup copy
+data/rules.json

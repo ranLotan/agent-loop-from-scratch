@@ -1,19 +1,31 @@
-// Entry point: wires the real store into the app and listens on loopback only.
+// Entry point: wires the real core into the app and listens on loopback only.
 // Run with: npm run dev -w apps/api   (or npm run dev for API + web together)
 
-import { listAllMonths, loadRules, loadTransactions } from "../../../src/store";
+import { fileURLToPath } from "node:url";
+import { fetchMonth, importStatement } from "../../../src/imports";
+import { listAllMonths, listImports, loadRules, loadTransactions } from "../../../src/store";
 import { createApp } from "./app";
 
 try {
-  process.loadEnvFile(); // optional API_PORT; secrets stay server-side
+  // The repo root's .env, by path: `npm run dev` starts this server with apps/api as the working directory,
+  // so a plain loadEnvFile() would look for apps/api/.env and silently find nothing.
+  // API_PORT, and the Cal login for scrapes. Secrets stay server-side.
+  process.loadEnvFile(fileURLToPath(new URL("../../../.env", import.meta.url)));
 } catch {
-  // No .env: defaults are fine for a read-only API.
+  // No .env: reading works; a scrape will report the missing variables.
 }
 
 const port = Number(process.env.API_PORT ?? 3000);
 // 127.0.0.1, not 0.0.0.0: the API is not reachable from the local network.
 const host = "127.0.0.1";
 
-createApp({ listMonths: listAllMonths, loadTransactions, loadRules }).listen(port, host, () => {
+createApp({
+  listMonths: listAllMonths,
+  loadTransactions,
+  loadRules,
+  importStatement,
+  listImports,
+  fetchMonth: (month) => fetchMonth(month),
+}).listen(port, host, () => {
   console.log(`API listening on http://${host}:${port}`);
 });

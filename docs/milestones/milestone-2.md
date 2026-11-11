@@ -1,5 +1,15 @@
 # Milestone 2: Local backend and SQLite
 
+**Status: done** (2026-11-11). Every acceptance criterion below is met; the agent and approve flows on SQLite are covered by `src/store.test.ts` and the real-data check is the owner's to run.
+
+## Decisions made during M2
+- **Driver:** built-in `node:sqlite`. No dependency or native build; prints an ExperimentalWarning on Node 22.
+- **Transaction id:** `billingMonth` **and** the installment number were added to the hash. Tests check that xlsx and scraper still give the same id.
+- **`data/rules.json`:** no longer committed, because the repo is public. It's now a gitignored backup written by `npm run export`, and `data/rules.example.json` (fake rules) seeds a fresh clone. The old file stays in git history.
+- **Rows missing from a re-import** are marked (`missing_since_batch_id`, migration 002), never deleted, and left out of reports.
+- **Uploads** are the raw `application/octet-stream` request body, so there's no multipart library. That also keeps uploads from being a CSRF-able "simple" request. Writes from other origins get a 403.
+- **Proposal status `answered`:** the old JSON only recorded *that* an item was reviewed, so migrated and CLI-approved items get this status until M4 records the actual answer.
+
 ## Objectives
 - Make SQLite the source of truth for transactions, categories, rules, import batches and agent proposals.
 - Make transaction identity safe for a global primary key.

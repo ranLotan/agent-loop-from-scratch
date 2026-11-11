@@ -3,6 +3,7 @@ import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { after, before, test } from "node:test";
+import type { StatementImport } from "../../../src/imports";
 import type { RulesFile, Transaction } from "../../../src/types";
 import { createApp, previousMonth, type Deps } from "./app";
 
@@ -21,10 +22,19 @@ const MONTHS: Record<string, Transaction[]> = {
 const RULES: RulesFile = { categories: ["מזון ומשקאות", "פנאי בילוי"], rules: [{ merchant: "Disney Plus", category: "פנאי בילוי" }] };
 
 let rules = RULES;
+let finishScrape: (result: unknown) => void = () => {};
+const imported: { name: string; month?: string; size: number }[] = [];
 const deps: Deps = {
   listMonths: () => Object.keys(MONTHS).sort(),
   loadTransactions: (m) => MONTHS[m] ?? null,
   loadRules: () => rules,
+  importStatement: (bytes, name, month) => {
+    if (bytes.toString() === "broken") throw new Error("No transactions found.");
+    imported.push({ name, month, size: bytes.length });
+    return { duplicate: bytes.toString() === "again", month: month ?? "2026-09", fileName: name, count: 1 } as StatementImport;
+  },
+  listImports: () => [{ id: 1, source: "csv", fileName: "sep.csv", billingMonth: "2026-09", txCount: 1, checks: null, createdAt: "now" }],
+  fetchMonth: () => new Promise((resolve) => (finishScrape = resolve as (r: unknown) => void)),
 };
 
 let server: Server;
@@ -37,17 +47,26 @@ before(async () => {
 after(() => server.close());
 
 /** http.request, not fetch: fetch silently drops a custom Host header (it's a forbidden header). */
-function get(path: string, host = `127.0.0.1:${port}`): Promise<{ status: number; body: any }> {
+function send(
+  method: string,
+  path: string,
+  { body, headers = {} }: { body?: string | Buffer; headers?: Record<string, string> } = {},
+): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
-    request({ host: "127.0.0.1", port, path, headers: { host } }, (res) => {
+    request({ host: "127.0.0.1", port, path, method, headers: { host: `127.0.0.1:${port}`, ...headers } }, (res) => {
       let text = "";
       res.on("data", (chunk) => (text += chunk));
       res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(text) }));
     })
       .on("error", reject)
-      .end();
+      .end(body);
   });
 }
+const get = (path: string, host?: string) => send("GET", path, host ? { headers: { host } } : {});
+const upload = (path: string, body: string | Buffer, headers: Record<string, string> = {}) =>
+  send("POST", path, { body, headers: { "content-type": "application/octet-stream", ...headers } });
+const postJson = (path: string, data: unknown, headers: Record<string, string> = {}) =>
+  send("POST", path, { body: JSON.stringify(data), headers: { "content-type": "application/json", ...headers } });
 
 test("previousMonth rolls back across a year", () => {
   assert.equal(previousMonth("2026-10"), "2026-09");
@@ -106,4 +125,59 @@ test("a thrown error becomes a JSON 500 (Express 5 error handler)", async () => 
   } finally {
     rules = RULES;
   }
+});
+
+test("upload: the file body and its name reach the import service; new → 201, duplicate → 200", async () => {
+  const created = await upload("/api/imports?name=sep.csv&month=2026-09", "a,b,c");
+  assert.equal(created.status, 201);
+  assert.deepEqual(imported.at(-1), { name: "sep.csv", month: "2026-09", size: 5 });
+
+  const again = await upload("/api/imports?name=sep.csv", "again");
+  assert.equal(again.status, 200);
+  assert.equal(again.body.duplicate, true);
+  assert.equal(imported.at(-1)!.month, undefined, "no month → the statement's own billing month");
+});
+
+test("upload: rejects a wrong body, file type, month or unreadable file", async () => {
+  assert.equal((await send("POST", "/api/imports?name=sep.csv", { body: "a,b", headers: { "content-type": "text/plain" } })).status, 415);
+  assert.equal((await upload("/api/imports?name=statement.pdf", "x")).status, 400);
+  assert.equal((await upload("/api/imports", "x")).status, 400);
+  assert.equal((await upload("/api/imports?name=sep.csv&month=2026-13", "x")).status, 400);
+  const broken = await upload("/api/imports?name=sep.csv", "broken");
+  assert.equal(broken.status, 422);
+  assert.match(broken.body.error, /No transactions found/);
+});
+
+test("upload: a file over the size limit → 413, not 500", async () => {
+  const { status } = await upload("/api/imports?name=big.csv", Buffer.alloc(6 * 1024 * 1024));
+  assert.equal(status, 413);
+});
+
+test("writes from another website are refused (CSRF); the dashboard's origin is allowed", async () => {
+  assert.equal((await upload("/api/imports?name=sep.csv", "x", { origin: "https://evil.example" })).status, 403);
+  assert.equal((await upload("/api/imports?name=sep.csv", "x", { origin: "http://localhost:5173" })).status, 201);
+});
+
+test("GET /api/imports lists the history", async () => {
+  const { status, body } = await get("/api/imports");
+  assert.equal(status, 200);
+  assert.equal(body[0].fileName, "sep.csv");
+});
+
+test("scrape runs as a background job: 202 at once, 409 while running, then done with a result", async () => {
+  assert.equal((await postJson("/api/scrape", { month: "nope" })).status, 400);
+
+  const started = await postJson("/api/scrape", { month: "2026-10" });
+  assert.equal(started.status, 202);
+  const { jobId } = started.body;
+  assert.equal((await get(`/api/jobs/${jobId}`)).body.status, "running");
+
+  const second = await postJson("/api/scrape", { month: "2026-10" });
+  assert.deepEqual([second.status, second.body.jobId], [409, jobId]);
+
+  finishScrape({ month: "2026-10", count: 3 });
+  await new Promise((resolve) => setImmediate(resolve)); // let the job's .then() run
+  const done = (await get(`/api/jobs/${jobId}`)).body;
+  assert.deepEqual([done.status, done.result.count], ["done", 3]);
+  assert.equal((await get("/api/jobs/999")).status, 404);
 });

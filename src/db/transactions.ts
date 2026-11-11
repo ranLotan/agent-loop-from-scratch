@@ -51,23 +51,8 @@ export function upsertTransactions(
   transactions: Transaction[],
   batchId: number | null,
 ): void {
-  // M2, YOUR PART: saving a row that already exists.
-  //
-  // As written, this INSERT crashes when an id is already in the table, so importing a month twice fails.
-  // TODO: add an ON CONFLICT clause, after the closing ) of VALUES:
-  //
-  //   ON CONFLICT (id) DO UPDATE SET
-  //     some_column = excluded.some_column,
-  //     ...
-  //
-  // `excluded` means "the new row that couldn't be inserted".
-  //
-  // Which columns to list:
-  //   - Everything that comes FROM the statement: refresh it. Skip `id` (it's what matched).
-  //   - category_override, description_override, override_source: do NOT list them.
-  //     Those are your own edits, and a re-import has to leave them alone.
-  //
-  // Tests: npm test (src/db/db.test.ts). Two of them are red until this is done.
+  // Upsert: a new id is inserted; a known id gets the bank's columns refreshed (`excluded` = the new row).
+  // category_override, description_override and override_source are the owner's edits, so they're never listed.
   const insert = db.prepare(`
     INSERT INTO transactions (
       id, billing_month, position, date, merchant, normalized_merchant, amount, currency,
@@ -96,7 +81,8 @@ export function upsertTransactions(
       card                = excluded.card,
       source              = excluded.source,
       import_batch_id     = excluded.import_batch_id,
-      updated_at          = excluded.updated_at
+      updated_at          = excluded.updated_at,
+      missing_since_batch_id = NULL -- the statement has this row (again)
   `);
 
   const now = new Date().toISOString();
@@ -127,10 +113,10 @@ export function upsertTransactions(
   });
 }
 
-/** A month's rows in statement order, or null if the month was never imported. */
+/** A month's rows in statement order, or null if the month was never imported. Missing rows are left out. */
 export function loadTransactions(db: DatabaseSync, billingMonth: string): Transaction[] | null {
   const rows = db
-    .prepare("SELECT * FROM transactions WHERE billing_month = ? ORDER BY position")
+    .prepare("SELECT * FROM transactions WHERE billing_month = ? AND missing_since_batch_id IS NULL ORDER BY position")
     .all(billingMonth) as unknown as TransactionRow[];
   return rows.length ? rows.map(toTransaction) : null;
 }
@@ -138,7 +124,7 @@ export function loadTransactions(db: DatabaseSync, billingMonth: string): Transa
 /** Every imported month, oldest first. */
 export function listMonths(db: DatabaseSync): string[] {
   return db
-    .prepare("SELECT DISTINCT billing_month FROM transactions ORDER BY billing_month")
+    .prepare("SELECT DISTINCT billing_month FROM transactions WHERE missing_since_batch_id IS NULL ORDER BY billing_month")
     .all()
     .map((row) => row.billing_month as string);
 }
