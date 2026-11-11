@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Edit(./.env)",
+      "Read(./data/transactions/**)",
+      "Read(./data/raw/**)",
+      "Read(./data/reports/**)",
+      "Read(./data/proposals/**)",
+      "Read(./data/evals/**)",
+      "Read(./data/memory.md)",
+      "Read(./data/app.db*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Read|Edit|Write|NotebookEdit|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-private.mjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/eval-reminder.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-on-stop.mjs\"",
+            "timeout": 240,
+            "statusMessage": "Running typecheck + tests..."
+          }
+        ]
+      }
+    ]
+  }
+}
