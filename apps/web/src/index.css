@@ -173,3 +173,28 @@ form,
   font-weight: 600;
   border-style: dashed;
 }
+
+.proposal {
+  display: block;
+  margin: 12px 0;
+}
+
+.proposal p {
+  margin: 6px 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.badge-low {
+  border-style: dashed;
+}
+
+.badge-high {
+  font-weight: 600;
+}

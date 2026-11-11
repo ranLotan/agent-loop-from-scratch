@@ -14,7 +14,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHandlers, type AgentOutput } from "../agent/handlers";
-import { client } from "../agent/client";
+import { getClient, MODELS } from "../agent/client";
+import { agentCategories } from "../categorize";
 import { runLoop } from "../agent/loop";
 import { SYSTEM_PROMPT } from "../agent/prompt";
 import { lookupMerchantTool, proposeCategoryTool } from "../agent/tools";
@@ -22,12 +23,6 @@ import { DATA_DIR, loadRules } from "../store";
 import { buildCases, type EvalCase } from "./dataset";
 import { pct, score, type Score } from "./score";
 
-/** $ per million tokens: [input, output]. */
-const MODELS: Record<string, { id: string; price: [number, number] }> = {
-  opus: { id: "claude-opus-5-5", price: [4, 20] },
-  sonnet: { id: "claude-sonnet-5-5", price: [2, 10] },
-  haiku: { id: "claude-haiku-5-5", price: [0.1, 0.5] },
-};
 /** Same batch size as `npm run agent` (MAX_MERCHANTS), so the eval sees what production sees. */
 const BATCH = 10;
 
@@ -36,9 +31,10 @@ const flag = (name: string) => args[args.indexOf(name) + 1];
 const live = args.includes("--run");
 const silver = args.includes("--silver") ? Number(flag("--silver")) : 25;
 const models = (args.includes("--models") ? flag("--models") : "opus,sonnet,haiku").split(",");
-for (const m of models) if (!MODELS[m]) throw new Error(`Unknown model "${m}". Use: ${Object.keys(MODELS).join(", ")}`);
+for (const m of models) if (!(m in MODELS)) throw new Error(`Unknown model "${m}". Use: ${Object.keys(MODELS).join(", ")}`);
 
-const { categories } = loadRules();
+// The same category list the agent gets in production: never the built-in by-hand bucket.
+const categories = agentCategories(loadRules());
 const cases = buildCases(silver);
 const count = (l: EvalCase["label"]) => cases.filter((c) => c.label === l).length;
 console.log(`${cases.length} cases: ${count("gold")} gold · ${count("silver")} silver · ${count("injection")} injection\n`);
@@ -66,7 +62,7 @@ interface ModelRun {
 const runs: ModelRun[] = [];
 
 for (const name of models) {
-  const { id, price } = MODELS[name];
+  const { id, price } = MODELS[name as keyof typeof MODELS];
   const output: AgentOutput = { proposals: [], flags: [] };
   const usage = { input: 0, output: 0 };
   let calls = 0;
@@ -84,7 +80,7 @@ for (const name of models) {
       "(none)",
     ].join("\n");
     const result = await runLoop({
-      client,
+      client: getClient(),
       model: id,
       system: SYSTEM_PROMPT,
       tools: [proposeCategoryTool(categories), lookupMerchantTool()],

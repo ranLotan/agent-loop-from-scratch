@@ -4,14 +4,22 @@ import type { DatabaseSync } from "node:sqlite";
 import type { ProposalsFile } from "../agent/proposals";
 import type { CandidateReason } from "../candidates";
 import { normalizeMerchant } from "../categorize";
-import { inTransaction } from "./index";
+import type { Answer } from "../agent/review";
+import { ConflictError, inTransaction, NotFoundError } from "./index";
 
 /**
  * Stores a new agent run. If the run is already stored (same month and createdAt), only records which
  * proposals and flags are now in `reviewed`. That's how approve.ts saves after every answer.
  * Returns how many proposals and flags were inserted.
  */
-export function saveProposalsFile(db: DatabaseSync, file: ProposalsFile): { proposals: number; flags: number } {
+export interface RunMeta {
+  stoppedBy: string;
+  iterations: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export function saveProposalsFile(db: DatabaseSync, file: ProposalsFile, meta?: RunMeta): { proposals: number; flags: number } {
   return inTransaction(db, () => {
     const now = new Date().toISOString();
     const reviewed = new Set(file.reviewed);
@@ -29,7 +37,12 @@ export function saveProposalsFile(db: DatabaseSync, file: ProposalsFile): { prop
       return { proposals: 0, flags: 0 };
     }
 
-    const runId = db.prepare("INSERT INTO agent_runs (billing_month, model, created_at) VALUES (?, ?, ?)").run(file.month, file.model, file.createdAt)
+    const runId = db
+      .prepare(`
+        INSERT INTO agent_runs (billing_month, model, created_at, stopped_by, iterations, input_tokens, output_tokens)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(file.month, file.model, file.createdAt, meta?.stoppedBy ?? null, meta?.iterations ?? null, meta?.inputTokens ?? null, meta?.outputTokens ?? null)
       .lastInsertRowid;
     const addProposal = db.prepare(`
       INSERT INTO agent_proposals (run_id, merchant, normalized_merchant, category, confidence, reason, new_category_idea, status, answered_at)
@@ -104,4 +117,135 @@ export function loadProposalsFile(db: DatabaseSync, month: string): ProposalsFil
       ...flagRows.filter((r) => r.status !== "pending").map((r) => r.transaction_id as string),
     ],
   };
+}
+
+// ---------- Review, one item at a time (M4) ----------
+
+export type ProposalStatus = "pending" | "approved" | "changed" | "new_category" | "noted" | "skipped" | "answered";
+
+export interface ProposalRow {
+  id: number;
+  runId: number;
+  month: string;
+  merchant: string;
+  category: string;
+  confidence: "high" | "medium" | "low";
+  reason: string;
+  newCategoryIdea: string | null;
+  status: ProposalStatus;
+  /** Exactly what the owner answered; null for pending items and for answers migrated from JSON. */
+  answer: Answer | null;
+  answeredAt: string | null;
+}
+
+export interface FlagRow {
+  id: number;
+  runId: number;
+  month: string;
+  transactionId: string;
+  date: string;
+  merchant: string;
+  amount: number;
+  currency: string;
+  severity: "info" | "warning";
+  explanation: string;
+  reasons: CandidateReason[];
+  status: "pending" | "ok" | "noted";
+}
+
+export interface RunRow {
+  id: number;
+  month: string;
+  model: string;
+  createdAt: string;
+  stoppedBy: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+const toProposal = (r: Record<string, unknown>): ProposalRow => ({
+  id: Number(r.id),
+  runId: Number(r.run_id),
+  month: r.billing_month as string,
+  merchant: r.merchant as string,
+  category: r.category as string,
+  confidence: r.confidence as ProposalRow["confidence"],
+  reason: r.reason as string,
+  newCategoryIdea: r.new_category_idea as string | null,
+  status: r.status as ProposalStatus,
+  answer: r.answer_json ? JSON.parse(r.answer_json as string) : null,
+  answeredAt: r.answered_at as string | null,
+});
+
+const toFlag = (r: Record<string, unknown>): FlagRow => ({
+  id: Number(r.id),
+  runId: Number(r.run_id),
+  month: r.billing_month as string,
+  transactionId: r.transaction_id as string,
+  date: r.date as string,
+  merchant: r.merchant as string,
+  amount: r.amount as number,
+  currency: r.currency as string,
+  severity: r.severity as FlagRow["severity"],
+  explanation: r.explanation as string,
+  reasons: JSON.parse(r.reasons_json as string),
+  status: r.status as FlagRow["status"],
+});
+
+/** The newest agent run for a month, or null. */
+export function latestRun(db: DatabaseSync, month: string): RunRow | null {
+  const r = db.prepare("SELECT * FROM agent_runs WHERE billing_month = ? ORDER BY created_at DESC, id DESC LIMIT 1").get(month);
+  return r
+    ? {
+        id: Number(r.id),
+        month: r.billing_month as string,
+        model: r.model as string,
+        createdAt: r.created_at as string,
+        stoppedBy: r.stopped_by as string | null,
+        inputTokens: r.input_tokens as number | null,
+        outputTokens: r.output_tokens as number | null,
+      }
+    : null;
+}
+
+const PROPOSALS_SQL = `
+  SELECT p.*, r.billing_month FROM agent_proposals p JOIN agent_runs r ON r.id = p.run_id`;
+const FLAGS_SQL = `
+  SELECT f.*, r.billing_month, t.date, t.merchant, t.amount, t.currency
+  FROM exception_flags f JOIN agent_runs r ON r.id = f.run_id JOIN transactions t ON t.id = f.transaction_id`;
+
+/** The proposals of a month's newest run, in the order the agent made them. */
+export function listProposals(db: DatabaseSync, month: string): ProposalRow[] {
+  const run = latestRun(db, month);
+  return run ? db.prepare(`${PROPOSALS_SQL} WHERE p.run_id = ? ORDER BY p.id`).all(run.id).map(toProposal) : [];
+}
+
+export function listFlags(db: DatabaseSync, month: string): FlagRow[] {
+  const run = latestRun(db, month);
+  return run ? db.prepare(`${FLAGS_SQL} WHERE f.run_id = ? ORDER BY f.id`).all(run.id).map(toFlag) : [];
+}
+
+export function getProposal(db: DatabaseSync, id: number): ProposalRow {
+  const r = db.prepare(`${PROPOSALS_SQL} WHERE p.id = ?`).get(id);
+  if (!r) throw new NotFoundError(`No proposal ${id}`);
+  return toProposal(r);
+}
+
+export function getFlag(db: DatabaseSync, id: number): FlagRow {
+  const r = db.prepare(`${FLAGS_SQL} WHERE f.id = ?`).get(id);
+  if (!r) throw new NotFoundError(`No flag ${id}`);
+  return toFlag(r);
+}
+
+/** Records the owner's answer. Answering twice is refused: the first answer already wrote its rules and notes. */
+export function recordProposalAnswer(db: DatabaseSync, id: number, status: Exclude<ProposalStatus, "pending">, answer: Answer): void {
+  const changed = db
+    .prepare("UPDATE agent_proposals SET status = ?, answer_json = ?, answered_at = ? WHERE id = ? AND status = 'pending'")
+    .run(status, JSON.stringify(answer), new Date().toISOString(), id).changes;
+  if (!changed) throw new ConflictError(`Proposal ${id} was already answered`);
+}
+
+export function recordFlagAnswer(db: DatabaseSync, id: number, status: "ok" | "noted"): void {
+  const changed = db.prepare("UPDATE exception_flags SET status = ? WHERE id = ? AND status = 'pending'").run(status, id).changes;
+  if (!changed) throw new ConflictError(`Flag ${id} was already answered`);
 }

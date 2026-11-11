@@ -122,14 +122,20 @@ cal-expence-agent/
   - Built: `GET /api/months`, `GET /api/months/:month/summary` (`summarize()` + the previous month), `GET /api/months/:month/transactions`
   - Built: `GET /api/imports`, `POST /api/imports?name=&month=` (the file is the raw `application/octet-stream` body, no multipart library), `POST /api/scrape {month}` → `202 {jobId}`, `GET /api/jobs/:id`
   - Built (M3): `GET /api/transactions?from=&to=&q=&category=&source=&currency=` (across months), `PATCH /api/transactions/:id {category, description, createRule}`, `/api/rules` and `/api/categories` (GET, POST, PATCH, DELETE). Typed core errors map to 400/404/409.
-  - *(M4)* `POST /api/agent-runs` → job id, `GET /api/proposals?status=pending`, `POST /api/proposals/:id/answer`
+  - Built (M4): `POST /api/agent-runs {month}` → 202 job id, `GET /api/review?month=` (the newest run, its proposals and flags), `POST /api/proposals/:id/answer {kind, category?, text?}`, `POST /api/flags/:id/answer {kind: ok|note}`
 
-### 2. How the agent is invoked *(M4)*
-- Extract the body of `src/agent/run.ts` into a function, for example `runAgent({ month, transactions, history, rules, memory, client, model })` that returns `{ proposals, flags, usage, stoppedBy }`. It uses the same `merchantsToReview`, `findCandidates`, tools, `SYSTEM_PROMPT`, `createHandlers` and `runLoop`.
-- `npm run agent` becomes a thin wrapper (load data → `runAgent` → print → save), and the API route does the same but saves to SQLite.
-- `agent/client.ts`: build the Anthropic client lazily (a `getClient()` function) so importing the module in the API or tests has no side effects. The key is read from `process.env` on the server only.
-- Watch out: `client.ts` calls `process.loadEnvFile()` with no path, which reads `.env` from the working directory. The API runs in `apps/api`, so it must load the root `.env` by path, as `apps/api/src/server.ts` already does. This bug broke scraping from the dashboard once.
-- A run takes several seconds, so it runs as a background job (see 3). The UI polls `GET /api/jobs/:id`.
+### 2. How the agent is invoked (built in M4)
+- `runAgent({ month, client, model })` in `src/agent/service.ts`: the same `merchantsToReview`, `findCandidates`, tools, `SYSTEM_PROMPT`, `createHandlers` and `runLoop` as before. It saves the run for review and returns proposals, flags, usage and cost. `npm run agent` only prints it; the API runs it as a background job.
+- `applyAnswer(proposalId, answer)` in `src/agent/apply.ts`: the one place answers turn into writes, for the CLI `approve` and the Review page. The policy stays in the pure `decide()`. Every answer is recorded as what it was (`answer_json`), and answering twice is a 409.
+- **Model: Haiku** (`MODEL` in `src/agent/client.ts`). The eval showed it as accurate as Opus here at about 1/36 of the cost. One price table (`MODELS`, `costOf`) serves runs and the eval.
+- `getClient()` creates the SDK client on first use and loads the root `.env` **by path**, so it works from `apps/api`. That's the bug that once broke scraping from the dashboard.
+- **The by-hand bucket `לסיווג ידני`** (`MANUAL_CATEGORY`, migration 003, a `system` category): a rule to it keeps a merchant like BIT away from the agent for good, and each charge waits for the owner's own edit. It can't be renamed or deleted, and it's never in the agent's category enum (`agentCategories()`).
+- **Answers:**
+  - approve, change or new category → a rule
+  - **this month only** → an agent-labeled edit on that month's charges (never over a manual edit), plus a memory note, no rule
+  - **always by hand** → a rule to the bucket
+  - note → memory only
+  - skip → stays pending
 
 ### 3. How the scraper runs
 - `fetchMonth()` in `src/imports.ts` (Puppeteer, about 30 s) runs inside the API process as an **in-memory job** (`apps/api/src/jobs.ts`): `POST /api/scrape {month}` returns a `jobId` right away, and the UI polls every 2 s. Only one scrape runs at a time (`409` with the running job's id otherwise).
@@ -139,7 +145,7 @@ cal-expence-agent/
 - There's no queue library. One process plus a `Map<jobId, Job>` is enough for one user. Jobs are lost on restart, which is acceptable.
 
 ### 4. CLI and app side by side
-- Both are thin entry points over the same `src/` functions. Import and fetch already moved out of `cli.ts` into `src/imports.ts` (`importStatement`, `fetchMonth`), which **return** results that the CLI prints and the API sends as JSON. `approve.ts`'s apply-actions block follows in M4.
+- Both are thin entry points over the same `src/` functions. Import and fetch already moved out of `cli.ts` into `src/imports.ts` (`importStatement`, `fetchMonth`), which **return** results that the CLI prints and the API sends as JSON. `approve.ts` and the Review page both call `applyAnswer()`; `npm run agent` and the API both call `runAgent()`.
 - **Shared storage:** the CLI and the dashboard both read and write SQLite through `store.ts`, so they always agree.
 - SQLite in WAL mode lets the CLI and a running API use the DB at the same time.
 

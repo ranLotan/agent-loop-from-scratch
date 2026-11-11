@@ -1,109 +1,37 @@
-// The agent, driven by YOUR loop. Run with: npm run agent -- YYYY-MM
+// The agent from the command line. Run with: npm run agent -- YYYY-MM
 //
-// Lesson 3: runLoop decides how many turns it takes; this file only supplies the job.
-// Lesson 4: three tools (lookup, propose, flag) and two tasks, so the model now CHOOSES
-// which tool to call and when. That choice is what the descriptions and system prompt steer.
+// The work is runAgent() in service.ts (the same one the dashboard runs); this file only prints.
+// Lesson 3: runLoop decides how many turns it takes. Lesson 4: three tools, and the model CHOOSES which to call.
 
-import { findCandidates } from "../candidates";
-import { loadHistory, loadMemory, loadRules, loadTransactions, saveProposals } from "../store";
-import { client, MODEL } from "./client";
-import { createHandlers, type AgentOutput } from "./handlers";
-import { runLoop } from "./loop";
-import { merchantsToReview } from "./merchants";
-import type { ProposalsFile } from "./proposals";
-import { SYSTEM_PROMPT } from "./prompt";
-import { flagExceptionTool, lookupMerchantTool, proposeCategoryTool } from "./tools";
-
-const MAX_MERCHANTS = 10;
-/** Only the newest notes go into the prompt: memory must stay bounded, it's paid on every call. */
-const MAX_MEMORY_NOTES = 50;
+import { isMonth } from "../normalize";
+import { getClient, MODEL } from "./client";
+import { runAgent } from "./service";
 
 const month = process.argv[2];
-if (!/^\d{4}-\d{2}$/.test(month ?? "")) throw new Error("Usage: npm run agent -- YYYY-MM");
+if (!isMonth(month ?? "")) throw new Error("Usage: npm run agent -- YYYY-MM");
 
-const transactions = loadTransactions(month);
-if (!transactions) throw new Error(`No data for ${month}. Run fetch or import first.`);
-const rules = loadRules();
-const history = loadHistory(month);
-
-// Deterministic: code decides WHAT needs judgment.
-const merchants = merchantsToReview(transactions, rules, MAX_MERCHANTS);
-const candidates = findCandidates(transactions, history);
-if (merchants.length === 0 && candidates.length === 0) {
+const r = await runAgent({ month, client: getClient(), model: MODEL });
+if (r.nothingToDo) {
   console.log("Nothing for the agent: every merchant is categorized and nothing looks unusual.");
   process.exit(0);
 }
 
-const tools = [proposeCategoryTool(rules.categories), lookupMerchantTool(), flagExceptionTool(candidates.map((c) => c.id))];
-const missingDocs = tools.filter((t) => !t.description).map((t) => t.name);
-if (!SYSTEM_PROMPT.trim() || missingDocs.length) {
-  throw new Error(`Finish the lesson 4 TODOs first: ${[...missingDocs, ...(SYSTEM_PROMPT.trim() ? [] : ["SYSTEM_PROMPT"])].join(", ")}`);
-}
+console.log(`model: ${r.model} | stopped by: ${r.stoppedBy} after ${r.iterations} call(s) | tool calls: ${JSON.stringify(r.toolCalls)}\n`);
 
-const task = [
-  `Statement month: ${month}.`,
-  "",
-  "## Merchants to categorize",
-  ...(merchants.length ? merchants.map((m) => `- ${m}`) : ["(none)"]),
-  "",
-  "## Exception candidates (found by code; judge each one)",
-  ...(candidates.length
-    ? candidates.map((c) => `- id=${c.id} | ${c.date} | ${c.merchant} | ${c.amount} ${c.currency} | ${c.reasons.join(", ")}`)
-    : ["(none)"]),
-].join("\n");
-
-// Long-term memory: notes the owner approved in earlier reviews (npm run approve).
-const memory = loadMemory().slice(-MAX_MEMORY_NOTES);
-const system = memory.length
-  ? `${SYSTEM_PROMPT}\n\n## Notes from past reviews (written by the owner; trust these)\n${memory.join("\n")}`
-  : SYSTEM_PROMPT;
-
-const output: AgentOutput = { proposals: [], flags: [] };
-
-const result = await runLoop({
-  client,
-  model: MODEL,
-  system,
-  tools,
-  handlers: createHandlers({ merchants, candidates, history, rules }, output),
-  messages: [{ role: "user", content: task }],
-  maxIterations: 15,
-});
-
-// Which tools did the model call, and how often? (the interesting part of lesson 4)
-const calls: Record<string, number> = {};
-for (const m of result.messages) {
-  if (m.role !== "assistant" || typeof m.content === "string") continue;
-  for (const b of m.content) if (b.type === "tool_use") calls[b.name] = (calls[b.name] ?? 0) + 1;
-}
-
-console.log(`stopped by: ${result.stoppedBy} after ${result.iterations} call(s) | tool calls: ${JSON.stringify(calls)}\n`);
-
-console.log(`Proposals (${output.proposals.length}/${merchants.length}):`);
-for (const p of output.proposals) {
+console.log(`Proposals (${r.proposals.length}/${r.merchants.length}):`);
+for (const p of r.proposals) {
   console.log(`  ${p.merchant} → ${p.category} [${p.confidence}] ${p.reason}`);
   if (p.new_category_idea) console.log(`    💡 new category idea: ${p.new_category_idea}`);
 }
-const missed = merchants.filter((m) => !output.proposals.some((p) => p.merchant === m));
-if (missed.length) console.warn(`  ⚠ No proposal for: ${missed.join(", ")}`);
+if (r.missed.length) console.warn(`  ⚠ No proposal for: ${r.missed.join(", ")}`);
 
-console.log(`\nFlags (${output.flags.length} of ${candidates.length} candidates):`);
-for (const f of output.flags) {
-  const c = candidates.find((x) => x.id === f.transaction_id)!;
+console.log(`\nFlags (${r.flags.length} of ${r.candidates.length} candidates):`);
+for (const f of r.flags) {
+  const c = f.candidate;
   console.log(`  ${f.severity === "warning" ? "⚠" : "ℹ"} ${c.date} ${c.merchant} ${c.amount} ${c.currency}: ${f.explanation}`);
 }
 
-if (result.finalText) console.log(`\nmodel: ${result.finalText}`);
-const cost = (result.usage.input * 4 + result.usage.output * 20) / 1_000_000;
-console.log(`\ntokens: ${result.usage.input} in / ${result.usage.output} out → $${cost.toFixed(4)}`);
-
-const saved = saveProposals<ProposalsFile>(month, {
-  month,
-  createdAt: new Date().toISOString(),
-  model: MODEL,
-  proposals: output.proposals,
-  flags: output.flags.map((f) => ({ ...f, candidate: candidates.find((c) => c.id === f.transaction_id)! })),
-  reviewed: [],
-});
-console.log(`\nSaved → ${saved}  (${memory.length} memory note(s) were in the prompt)`);
-console.log(`Next: npm run approve -- ${month}`);
+if (r.finalText) console.log(`\nmodel: ${r.finalText}`);
+console.log(`\ntokens: ${r.usage.input} in / ${r.usage.output} out → $${r.cost.toFixed(4)}`);
+console.log(`\nSaved for review (${r.memoryNotes} memory note(s) were in the prompt).`);
+console.log(`Next: npm run approve -- ${month}   (or the Review page in the dashboard)`);

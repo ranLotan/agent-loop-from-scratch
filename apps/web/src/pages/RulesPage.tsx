@@ -131,6 +131,7 @@ function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[];
         <tbody>
           {categories.map((c) => {
             const inUse = c.rules + c.edits > 0;
+            const locked = c.system || inUse;
             return (
               <tr key={c.id}>
                 <td dir="auto">
@@ -150,20 +151,29 @@ function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[];
                       </button>
                     </form>
                   ) : (
-                    c.name
+                    <>
+                      {c.name}
+                      {c.system && <span className="sub"> built in: charges that wait for you</span>}
+                    </>
                   )}
                 </td>
                 <td className="num">{c.rules}</td>
                 <td className="num">{c.edits}</td>
                 <td>
-                  <button type="button" className="link-button" onClick={() => setRenaming({ id: c.id, name: c.name })}>
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={c.system}
+                    title={c.system ? "Built in: a rule to it keeps a merchant away from the agent" : undefined}
+                    onClick={() => setRenaming({ id: c.id, name: c.name })}
+                  >
                     Rename
                   </button>{" "}
                   <button
                     type="button"
                     className="link-button"
-                    disabled={busy || inUse}
-                    title={inUse ? "In use: change its rules and edits first" : undefined}
+                    disabled={busy || locked}
+                    title={c.system ? "Built in" : inUse ? "In use: change its rules and edits first" : undefined}
                     onClick={() => run(() => api.deleteCategory(c.id))}
                   >
                     Delete

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RulesFile } from "../types";
+import { MANUAL_CATEGORY } from "../categorize";
 import { decide, formatMemoryNote } from "./review";
 import type { CategoryProposal } from "./tools";
 
@@ -97,4 +98,19 @@ test("8b. new_category with an existing name → no add_category (like change)",
 
 test("8c. new_category with an empty name → throws", () => {
   assert.throws(() => decide(proposal("Pet Zoo", "low"), { kind: "new_category", category: "  " }, rules, TODAY));
+});
+
+test("9. once → this month's charges get the category, no rule, and a note for the agent", () => {
+  assert.deepEqual(decide(proposal("BIT", "low", "שונות"), { kind: "once", category: "רפואה ובריאות" }, rules, TODAY), [
+    { kind: "set_month_category", merchant: "BIT", category: "רפואה ובריאות" },
+    { kind: "add_memory", note: "- 2026-10-28 | BIT | categorized as רפואה ובריאות for one month only (no rule)" },
+  ]);
+  assert.throws(() => decide(proposal("BIT", "low"), { kind: "once", category: "nope" }, rules, TODAY), /Unknown category/);
+});
+
+test("10. by_hand → a rule to the by-hand bucket, so the merchant never reaches the agent again", () => {
+  assert.deepEqual(decide(proposal("PAYBOX", "low", "שונות"), { kind: "by_hand" }, rules, TODAY), [
+    { kind: "add_rule", rule: { merchant: "PAYBOX", category: MANUAL_CATEGORY } },
+  ]);
+  assert.deepEqual(decide(proposal("Netflix", "low"), { kind: "by_hand" }, rules, TODAY), [], "already has a rule");
 });

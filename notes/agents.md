@@ -340,3 +340,45 @@ Each lesson has key points, then interview questions with the answers we settled
    - *Answer:* Measure quality, cost and latency on my own eval, not a public benchmark.
      Here all three models scored within noise of each other on accuracy, all resisted the injections, and all were well calibrated. Haiku costs about 1/36 of Opus, so it's the choice for categorization.
      Before switching I'd repeat the run, add cases, and evaluate the other task (judging exceptions) too. A batch job can trade latency for quality; an interactive one often can't.
+
+---
+
+## Lesson 7: Agents in a product: review queues, routing, model choice
+
+**Key points**
+- **Split proposing from applying:** the agent's tools only *record* proposals; a separate, human-run step *applies* them. The agent has no tool that writes rules, memory or data, so a prompt injection can't make a permanent change.
+- **Human-in-the-loop as an asynchronous queue:** the run saves its proposals and ends; the human answers later, one by one. No model waits and no tokens are spent while the person thinks.
+  - Record each answer exactly as given, and refuse a second answer instead of applying it twice.
+- **One policy, many front doors:** "what does this answer do" lives in one pure function, and every interface (CLI, web, API) goes through one apply function. The UI can't drift from the CLI, and the policy is unit-testable.
+- **Route before you call the model:** deterministic code decides what reaches the LLM. Known cases go to rules, inputs the model *can't* know (peer-to-peer transfers) go straight to a human queue, and only the rest goes to the model. That saves cost, avoids confident guesses, and sends less personal data.
+- **Constrain the output space:** an enum in the tool schema means the model can only pick valid options; human-only options are simply left out of it.
+- **Choosing a model with evals:** compare on the same labeled set (accuracy, calibration, cost, tool-use reliability, injection resistance). A cheaper model is good enough when the workflow catches its mistakes.
+- **Reading an eval change:** check whether the test set changed before blaming the code. Small sets are noisy (one of 11 cases = 9 points).
+- **Testing without the model:** inject a fake client with scripted tool calls (and failures), run the real workflow against an in-memory database, and assert on the resulting state.
+- **In this project:** `runAgent()` (`src/agent/service.ts`), `applyAnswer()` → `decide()` (`src/agent/apply.ts`, `review.ts`), the `לסיווג ידני` bucket kept out of the enum by `agentCategories()`, and `src/agent/agent-flow.test.ts`.
+  - BIT-like merchants went from 12 agent questions to 0 after by-hand rules.
+  - The Haiku eval rerun cost $0.0086: gold 64% (the same 7 right as before, plus 4 new taste-dependent labels), low-confidence answers right 0/8, so the policy keeps them out of rules.
+
+**Interview questions**
+1. Why would you keep some inputs away from the LLM entirely, and how would you decide which ones?
+   - *Answer:* I only send the model what needs judgment. Cases code can answer exactly, like a known merchant with a rule, go to code: cheaper, faster, and always the same answer.
+     Cases where the information isn't in the input at all, like a peer-to-peer transfer, go straight to a human, because the model can only guess. That also sends less personal data to a third party.
+     I decide from evidence, like eval results or past approvals showing low confidence and frequent mistakes, and do the routing in deterministic code before the model is called.
+   - ⚠️ "Isn't that just a rules engine?" Deliberately: the LLM handles the long tail, and every case it settles can become a rule, so fewer inputs need the model over time.
+2. How would you decide whether a cheaper model is good enough for your agent?
+   - *Answer:* I run both models on the same labeled eval set and compare accuracy, calibration and cost. Calibration matters because the workflow relies on low-confidence answers being the wrong ones.
+     I also check tool-use reliability, injection resistance and latency.
+     Whether the cheaper model is good enough depends on what a mistake costs and what catches it: with a human reviewing every proposal, a slightly less accurate model at a fraction of the cost is the right call.
+   - ⚠️ Decide the threshold before you look, and remember a small eval set is noisy.
+3. After a change, your agent's eval score drops from 88% to 64%. How do you investigate?
+   - *Answer:* First I check whether the test set changed, because new or relabeled cases make the two scores incomparable.
+     Then I diff per case: are the old passes still passing, and are the new failures real mistakes or debatable labels?
+     I check the sample size and rerun to see the model's natural variance. Only if the same cases now fail do I blame the change, and I confirm by reverting it and rerunning on the identical set.
+   - ⚠️ Keep a fixed, versioned set for regression checks, and grow a separate one as data arrives.
+4. How do you test an agent's whole workflow automatically, without calling the real model?
+   - *Answer:* The agent takes its model client as a parameter, so tests inject a fake client that returns scripted responses: specific tool calls, then a final message.
+     I run the real workflow (loop, handlers, saving and applying answers) against an in-memory database and assert on the resulting state, not on text. I also script failures like an API error or a cut-off response.
+     These tests are fast, free and deterministic and cover control flow; model quality is measured separately with evals.
+   - ⚠️ A fake at the client interface beats mocking HTTP: it doesn't depend on the SDK's internals or wire format.
+
+---

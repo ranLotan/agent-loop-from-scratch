@@ -33,7 +33,7 @@ The agent only handles judgment: proposing categories for unknown merchants and 
 1. `fetch`: scrape Cal for a month and save it to SQLite as an import batch. Support manual Excel/CSV export from Cal as a fallback input (CLI `import`, or the dashboard's Imports page).
 2. `categorize`: code only. Priority: my edit on that one transaction → my rule for the merchant → Cal's sector (ענף) from the statement → uncategorized.
 3. `agent`: handle unmatched transactions and flag exceptions (above a threshold, new merchant, foreign currency, possible duplicate, new subscription).
-4. `approve`: CLI prompt to approve or re-categorize each suggestion (Todoist integration may come later).
+4. `approve`: approve or re-categorize each suggestion, in the CLI or on the dashboard's Review page, both through `applyAnswer()` → `decide()`. The outcome is a rule, this month only, or always by hand: the built-in `לסיווג ידני` bucket keeps a merchant like BIT away from the agent. (Todoist integration may come later.)
 5. `learn`: write approved results back to rules or memory.
 6. `report`: monthly breakdown by category, comparison with last month, and an exceptions section (Markdown or HTML).
 

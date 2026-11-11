@@ -51,16 +51,17 @@ test("the same file can't be imported twice, but scrapes without a file can repe
 
 test("a failed transaction leaves nothing behind", () => {
   const db = openDb(":memory:");
+  const before = Number(count(db, "categories")); // the built-in by-hand category is already there
   assert.throws(
     () =>
       inTransaction(db, () => {
         db.exec("INSERT INTO categories (name, origin, created_at) VALUES ('x', 'seed', 'now')");
-        assert.equal(count(db, "categories"), 1);
+        assert.equal(count(db, "categories"), before + 1);
         throw new Error("boom");
       }),
     /boom/,
   );
-  assert.equal(count(db, "categories"), 0);
+  assert.equal(count(db, "categories"), before, "the insert was rolled back");
 });
 
 test("a Transaction survives the round trip, in statement order", () => {

@@ -10,6 +10,10 @@ import type { ImportBatch } from "../../../src/db/imports";
 import { ConflictError, NotFoundError, ValidationError } from "../../../src/db/index";
 import type { CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { OverrideChange, StoredTransaction, TransactionSearch } from "../../../src/db/transactions";
+import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
+import type { Answer } from "../../../src/agent/review";
+import type { AgentRunResult } from "../../../src/agent/service";
+import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import { isMonth } from "../../../src/normalize";
 import { summarize } from "../../../src/report";
@@ -35,6 +39,33 @@ export interface Deps {
   addCategory(name: string): CategoryRow;
   renameCategory(id: number, name: string): CategoryRow;
   deleteCategory(id: number): void;
+  // M4: the agent and the review
+  runAgent(month: string): Promise<AgentRunResult>;
+  latestRun(month: string): RunRow | null;
+  listProposals(month: string): ProposalRow[];
+  listFlags(month: string): FlagRow[];
+  answerProposal(id: number, answer: Answer): AppliedAnswer;
+  answerFlag(id: number, answer: FlagAnswer): FlagRow;
+}
+
+/** The answers decide() understands, checked before anything is written. */
+function parseAnswer(body: unknown): Answer | string {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const text = (v: unknown) => typeof v === "string" && v.trim() !== "";
+  switch (b.kind) {
+    case "approve":
+    case "skip":
+    case "by_hand":
+      return { kind: b.kind };
+    case "change":
+    case "new_category":
+    case "once":
+      return text(b.category) ? { kind: b.kind, category: b.category as string } : `"${b.kind}" needs a category`;
+    case "note":
+      return text(b.text) ? { kind: "note", text: b.text as string } : `"note" needs a text`;
+    default:
+      return "kind must be one of approve, change, new_category, once, by_hand, note, skip";
+  }
 }
 
 const SOURCES = new Set(["manual", "agent", "rule", "cal", "none"]);
@@ -294,6 +325,51 @@ export function createApp(deps: Deps) {
     if (!id) return;
     deps.deleteCategory(id);
     res.status(204).end();
+  });
+
+  // ---------- M4: the agent and the review ----------
+
+  // Runs the agent on a month as a background job (a model call takes seconds). Nothing is applied until you answer.
+  app.post("/api/agent-runs", (req, res) => {
+    const month = requireMonth(req.body?.month, res);
+    if (!month) return;
+    const { job, alreadyRunning } = jobs.start("agent", () => deps.runAgent(month));
+    if (alreadyRunning) {
+      res.status(409).json({ error: "The agent is already running", jobId: job.id });
+      return;
+    }
+    res.status(202).json({ jobId: job.id });
+  });
+
+  // GET /api/review?month=2026-09 → the month's newest run, its proposals and its flags
+  app.get("/api/review", (req, res) => {
+    const month = requireMonth(req.query.month, res);
+    if (!month) return;
+    res.json({ run: deps.latestRun(month), proposals: deps.listProposals(month), flags: deps.listFlags(month) });
+  });
+
+  app.post("/api/proposals/:id/answer", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    const answer = parseAnswer(req.body);
+    if (typeof answer === "string") {
+      res.status(400).json({ error: answer });
+      return;
+    }
+    res.json(deps.answerProposal(id, answer));
+  });
+
+  app.post("/api/flags/:id/answer", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    const { kind, text } = req.body ?? {};
+    if (kind === "ok") {
+      res.json(deps.answerFlag(id, { kind: "ok" }));
+    } else if (kind === "note" && typeof text === "string" && text.trim()) {
+      res.json(deps.answerFlag(id, { kind: "note", text }));
+    } else {
+      res.status(400).json({ error: 'Expected { kind: "ok" } or { kind: "note", text }' });
+    }
   });
 
   // Unknown /api paths get JSON, not Express's default HTML page.

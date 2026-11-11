@@ -6,7 +6,7 @@
 //
 // Tests: npm test (src/agent/review.test.ts). Make them green.
 
-import { normalizeMerchant } from "../categorize";
+import { MANUAL_CATEGORY, normalizeMerchant } from "../categorize";
 import type { RulesFile, Rule } from "../types";
 import type { CategoryProposal } from "./tools";
 
@@ -16,13 +16,17 @@ export type Answer =
   | { kind: "change"; category: string } //           the model was wrong; use this category
   | { kind: "note"; text: string } //                 no rule, just remember something about this merchant
   | { kind: "skip" } //                               decide later
-  | { kind: "new_category"; category: string }; //   none of the categories fit; create this one
+  | { kind: "new_category"; category: string } //    none of the categories fit; create this one
+  | { kind: "once"; category: string } //             right for THIS month's charges only: no rule (M4)
+  | { kind: "by_hand" }; //                           never ask the agent about this merchant: I categorize each charge (M4)
 
 /** What to write. One answer can lead to several actions (e.g. a rule AND a note). */
 export type Action =
   | { kind: "add_category"; name: string }
   | { kind: "add_rule"; rule: Rule }
-  | { kind: "add_memory"; note: string };
+  | { kind: "add_memory"; note: string }
+  /** Give this statement month's charges from the merchant the category, as an approved-proposal edit (no rule). */
+  | { kind: "set_month_category"; merchant: string; category: string };
 
 /**
  * The policy (the tests check each line):
@@ -39,6 +43,8 @@ export type Action =
  *      covers this merchant and the enum shows the new category next run, so a note would only repeat them.
  *      An empty name → throw. A name that already exists → no add_category, just the rule.
  *      Careful: ruleFor checks rules.categories, which doesn't contain the new name yet.
+ *   9. once → set_month_category (this statement month's charges, no rule) + a memory note. Unknown category → throw.
+ *  10. by_hand → add_rule to MANUAL_CATEGORY (the merchant never reaches the agent again). Existing rule → nothing.
  *
  * `today` is passed in (not new Date()) so tests get the same result every run.
  */
@@ -78,6 +84,17 @@ export function decide(p: CategoryProposal, answer: Answer, rules: RulesFile, to
         ...ruleFor(newCategory, [...rules.categories, newCategory]), // a new array; rules is untouched
       ];
     }
+    case "once":
+      // This month's charges get the category; no rule, so next month's charge is judged again.
+      // The note tells the agent what was decided, like a low-confidence approve.
+      if (!rules.categories.includes(answer.category)) throw new Error(`Unknown category: ${answer.category}`);
+      return [
+        { kind: "set_month_category", merchant, category: answer.category },
+        note(`categorized as ${answer.category} for one month only (no rule)`),
+      ];
+    case "by_hand":
+      // A rule to the by-hand bucket: code then keeps the merchant away from the agent for good.
+      return ruleFor(MANUAL_CATEGORY, [...rules.categories, MANUAL_CATEGORY]);
     default: {
       const unreachable: never = answer; // compile error if a new Answer kind is added and not handled
       throw new Error(`Unknown answer: ${JSON.stringify(unreachable)}`);

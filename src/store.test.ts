@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ProposalsFile } from "./agent/proposals";
+import { MANUAL_CATEGORY } from "./categorize";
 import type { Transaction } from "./types";
 
 process.env.DB_PATH = ":memory:"; // must be set before store.ts opens the database
@@ -31,7 +32,7 @@ test("rules: categories first, then rules; duplicates skipped; unknown category 
   store.addRules([{ merchant: "  AROMA ", category: "תיירות" }]); // same merchant, ignoring case and spaces
 
   assert.deepEqual(store.loadRules(), {
-    categories: ["מסעדות", "תיירות"],
+    categories: [MANUAL_CATEGORY, "מסעדות", "תיירות"], // the built-in bucket comes with every database
     rules: [{ merchant: "Aroma", category: "מסעדות" }],
   });
   assert.throws(() => store.addRules([{ merchant: "X", category: "no such category" }]), /Unknown category/);

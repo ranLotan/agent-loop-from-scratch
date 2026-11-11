@@ -2,6 +2,10 @@
 // so there is one definition and none of the core's code reaches the browser.
 
 import type { Job } from "../../api/src/jobs";
+import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
+import type { Answer } from "../../../src/agent/review";
+import type { AgentRunResult } from "../../../src/agent/service";
+import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
 import type { ImportBatch } from "../../../src/db/imports";
 import type { CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { FetchImport, StatementImport } from "../../../src/imports";
@@ -101,4 +105,17 @@ export const api = {
   addCategory: (name: string) => request<CategoryRow>("/categories", json("POST", { name })),
   renameCategory: (id: number, name: string) => request<CategoryRow>(`/categories/${id}`, json("PATCH", { name })),
   deleteCategory: (id: number) => request<void>(`/categories/${id}`, json("DELETE")),
+
+  startAgentRun: (month: string) => request<{ jobId: string }>("/agent-runs", json("POST", { month })),
+  review: (month: string) => request<Review>(`/review?month=${month}`),
+  answerProposal: (id: number, answer: Answer) => request<AppliedAnswer>(`/proposals/${id}/answer`, json("POST", answer)),
+  answerFlag: (id: number, answer: FlagAnswer) => request<FlagRow>(`/flags/${id}/answer`, json("POST", answer)),
 };
+
+/** A month's newest agent run, its proposals and flags. */
+export interface Review {
+  run: RunRow | null;
+  proposals: ProposalRow[];
+  flags: FlagRow[];
+}
+export type { AgentRunResult, Answer, AppliedAnswer, FlagAnswer, FlagRow, ProposalRow, RunRow };

@@ -70,6 +70,8 @@ export interface CategoryRow {
   id: number;
   name: string;
   origin: "seed" | "owner";
+  /** Built in (the by-hand bucket): can't be renamed or deleted. */
+  system: boolean;
   /** How many rules and transaction edits use it; a category in use can't be deleted. */
   rules: number;
   edits: number;
@@ -124,7 +126,7 @@ export function deleteRule(db: DatabaseSync, id: number): void {
 export function listCategories(db: DatabaseSync): CategoryRow[] {
   return db
     .prepare(`
-      SELECT c.id, c.name, c.origin,
+      SELECT c.id, c.name, c.origin, c.system,
         (SELECT COUNT(*) FROM merchant_rules r WHERE r.category_id = c.id) AS rules,
         (SELECT COUNT(*) FROM transactions t WHERE t.category_override = c.name) AS edits
       FROM categories c ORDER BY c.id
@@ -134,6 +136,7 @@ export function listCategories(db: DatabaseSync): CategoryRow[] {
       id: Number(row.id),
       name: row.name as string,
       origin: row.origin as CategoryRow["origin"],
+      system: Boolean(row.system),
       rules: Number(row.rules),
       edits: Number(row.edits),
     }));
@@ -159,8 +162,9 @@ export function addCategory(db: DatabaseSync, name: string): CategoryRow {
 export function renameCategory(db: DatabaseSync, id: number, newName: string): CategoryRow {
   const trimmed = requireCategoryName(newName);
   return inTransaction(db, () => {
-    const current = db.prepare("SELECT name FROM categories WHERE id = ?").get(id);
+    const current = db.prepare("SELECT name, system FROM categories WHERE id = ?").get(id);
     if (!current) throw new NotFoundError(`No category ${id}`);
+    if (current.system) throw new ConflictError(`"${current.name}" is built in and can't be renamed`);
     if (current.name !== trimmed && db.prepare("SELECT 1 FROM categories WHERE name = ?").get(trimmed)) {
       throw new ConflictError(`"${trimmed}" already exists`);
     }
@@ -174,6 +178,7 @@ export function renameCategory(db: DatabaseSync, id: number, newName: string): C
 export function deleteCategory(db: DatabaseSync, id: number): void {
   const category = listCategories(db).find((c) => c.id === id);
   if (!category) throw new NotFoundError(`No category ${id}`);
+  if (category.system) throw new ConflictError(`"${category.name}" is built in and can't be deleted`);
   if (category.rules || category.edits) {
     throw new ConflictError(
       `"${category.name}" is used by ${category.rules} rule(s) and ${category.edits} edited transaction(s). Change those first.`,

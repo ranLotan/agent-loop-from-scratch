@@ -208,3 +208,20 @@ export function setOverride(
     return getTransaction(db, id)!;
   });
 }
+
+/**
+ * "This month only" from an approved proposal: gives the month's charges from `merchant` the category as an
+ * agent-labeled edit. A charge you already edited by hand keeps your edit. Returns how many charges changed.
+ */
+export function setMonthCategory(db: DatabaseSync, billingMonth: string, merchant: string, category: string): number {
+  if (!db.prepare("SELECT 1 FROM categories WHERE name = ?").get(category)) throw new ValidationError(`Unknown category "${category}"`);
+  return Number(
+    db
+      .prepare(`
+        UPDATE transactions SET category_override = ?, override_source = 'agent'
+        WHERE billing_month = ? AND normalized_merchant = ? AND missing_since_batch_id IS NULL
+          AND (override_source IS NULL OR override_source = 'agent')
+      `)
+      .run(category, billingMonth, normalizeMerchant(merchant)).changes,
+  );
+}

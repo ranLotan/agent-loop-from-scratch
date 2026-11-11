@@ -1,5 +1,21 @@
 # Milestone 4: Agent integration
 
+**Status: done** (2026-11-11). 111 tests with a fake model and an in-memory database, plus a check on a copy of the real database.
+
+## What was built, and decisions
+- **Services:** `runAgent()` (`src/agent/service.ts`) and `applyAnswer()` / `answerFlag()` (`src/agent/apply.ts`). `npm run agent`, `npm run approve` and the API all use them.
+- **Model: Haiku** by default. `getClient()` is lazy and loads the root `.env` by path.
+- **New answers, from the owner:** *this month only* (an agent-labeled edit on that month's charges, no rule, a memory note) and *always by hand* (a rule to the built-in `לסיווג ידני` category).
+  - A by-hand merchant never reaches the agent again. You can also set it directly, without a proposal, from the Edit form or the Rules page.
+  - On the real data: 3 BIT-like merchants, 12 agent questions before, 0 after, and 18 charges waiting for you.
+- **The built-in category** is protected (409 on rename or delete) and never offered to the model.
+- **Answers are recorded as what they were** (`answer_json`). Older ones show as "answered". Answering twice → 409.
+- **Review page:** run the agent (a background job, with the shared `useJob` hook), answer proposals and flags, and see the cost. **Dashboard:** "proposals to review" and "waiting for you (by hand)" counts.
+- **CLI:** new keys `o` (this month only) and `h` (always by hand). Without a keyboard it now quits cleanly instead of crashing.
+- **Eval rerun (2026-11-11, Haiku, $0.0086):** gold 64% (7 of 11: the same 7 as before, plus 4 misses on newer, taste-dependent labels such as Disney Plus → ילדים), silver 52% (a resampled set), injection 100%, "high" right 81% / "low" right 0%.
+  - **Decision: keep Haiku.** Low confidence still means "don't trust", which the approval policy relies on, and every proposal is reviewed anyway.
+  - The model is set in code (`MODEL`), not per run.
+
 ## Objectives
 - Run the agent and review its work from the dashboard, with the same human-approval guarantee as the CLI.
 

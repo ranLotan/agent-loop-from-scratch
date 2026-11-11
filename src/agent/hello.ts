@@ -3,13 +3,13 @@
 // Goal: ask the model which category a merchant belongs to, then print
 // the answer and what the call cost in tokens.
 
-import { client, MODEL } from "./client";
+import { getClient, MODEL } from "./client";
 
 const merchant = 'אונלי וויפס בע"מ';
 const categories = ["מזון ומשקאות", "ילדים", "ריהוט ובית", "טיפוח ויופי", "שונות"];
 
 // 1. The request: rules in `system`, data in `messages`.
-const messageResponse = await client.messages.create({
+const messageResponse = await getClient().messages.create({
   model: MODEL,
   max_tokens: 1000,
   system:

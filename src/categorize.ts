@@ -1,5 +1,16 @@
 import type { CategorizedTransaction, RulesFile, Transaction } from "./types";
 
+/**
+ * The built-in "to categorize by hand" bucket (migration 003). A rule to it means: this merchant (e.g. a BIT
+ * transfer) is never sent to the agent, and each charge waits for the owner's own edit. Protected from rename/delete.
+ */
+export const MANUAL_CATEGORY = "לסיווג ידני";
+
+/** The categories the agent may propose: everything except the by-hand bucket, which only a human chooses. */
+export function agentCategories(rules: RulesFile): string[] {
+  return rules.categories.filter((c) => c !== MANUAL_CATEGORY);
+}
+
 /** Cosmetic differences (case, extra spaces) shouldn't break an exact match. */
 export function normalizeMerchant(name: string): string {
   return name.replace(/\s+/g, " ").trim().toUpperCase();

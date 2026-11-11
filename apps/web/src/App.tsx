@@ -4,6 +4,7 @@ import { MonthGate } from "./components/MonthGate";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ImportsPage } from "./pages/ImportsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ReviewPage } from "./pages/ReviewPage";
 import { RulesPage } from "./pages/RulesPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
@@ -16,6 +17,7 @@ export function App() {
           <Route element={<MonthGate />}>
             <Route index element={<DashboardPage />} />
             <Route path="transactions" element={<TransactionsPage />} />
+            <Route path="review" element={<ReviewPage />} />
           </Route>
           <Route path="imports" element={<ImportsPage />} />
           <Route path="rules" element={<RulesPage />} />

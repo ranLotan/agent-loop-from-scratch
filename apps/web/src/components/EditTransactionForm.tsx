@@ -5,6 +5,8 @@ interface EditTransactionFormProps {
   transaction: TransactionRow;
   /** Your category names: the only choices, so an edit can't create a category by accident. */
   categories: string[];
+  /** The built-in by-hand bucket: as a rule it means "never ask the agent; I categorize each charge". */
+  byHandCategory?: string;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -12,7 +14,7 @@ interface EditTransactionFormProps {
 const SOURCE_TEXT = { manual: "your edit", agent: "an approved agent proposal", rule: "your rule", cal: "Cal's sector" } as const;
 
 /** Edits one transaction: its category (or a rule for the merchant) and its description. */
-export function EditTransactionForm({ transaction: t, categories, onSaved, onCancel }: EditTransactionFormProps) {
+export function EditTransactionForm({ transaction: t, categories, byHandCategory, onSaved, onCancel }: EditTransactionFormProps) {
   // Controlled inputs, starting from what's saved. "" in the select = no edit of your own.
   const [category, setCategory] = useState(t.categoryOverride ?? "");
   const [description, setDescription] = useState(t.descriptionOverride ?? "");
@@ -52,6 +54,7 @@ export function EditTransactionForm({ transaction: t, categories, onSaved, onCan
           {categories.map((name) => (
             <option key={name} value={name}>
               {name}
+              {name === byHandCategory ? " (by hand)" : ""}
             </option>
           ))}
         </select>
@@ -59,7 +62,15 @@ export function EditTransactionForm({ transaction: t, categories, onSaved, onCan
 
       <label>
         <input type="checkbox" checked={createRule} disabled={!category} onChange={(e) => setCreateRule(e.target.checked)} />{" "}
-        Make it a rule: every charge from <span dir="auto">{t.merchant}</span>, in every month
+        {category && category === byHandCategory ? (
+          <>
+            Always by hand: every charge from <span dir="auto">{t.merchant}</span> waits for your own edit, and the agent never sees it
+          </>
+        ) : (
+          <>
+            Make it a rule: every charge from <span dir="auto">{t.merchant}</span>, in every month
+          </>
+        )}
       </label>
 
       <label>

@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { api } from "../api";
 import { CategoryTable } from "../components/CategoryTable";
 import { Stat } from "../components/Stat";
@@ -8,6 +9,9 @@ import { useSelectedMonth } from "../hooks/useSelectedMonth";
 export function DashboardPage() {
   const month = useSelectedMonth();
   const { data, error, loading } = useApi(() => api.summary(month), [month]);
+  // Hooks before any early return: React matches them by call order on every render.
+  const review = useApi(() => api.review(month), [month]);
+  const categories = useApi(() => api.categories(), []);
 
   if (error) return <p role="alert">Error: {error}</p>;
   if (loading || !data) return <p>Loading…</p>;
@@ -15,6 +19,12 @@ export function DashboardPage() {
   const { summary, previous } = data;
   const ils = summary.totals.ILS ?? 0;
   const previousIls = previous?.summary.totals.ILS ?? 0;
+  const toReview =
+    (review.data?.proposals.filter((p) => p.status === "pending").length ?? 0) +
+    (review.data?.flags.filter((f) => f.status === "pending").length ?? 0);
+  const byHandName = categories.data?.find((c) => c.system)?.name;
+  const byHand = summary.byCategory.find((c) => c.category === byHandName)?.count ?? 0;
+  const linkTo = (path: string, extra = "") => `${path}?month=${month}${extra}`;
 
   return (
     <section>
@@ -31,6 +41,12 @@ export function DashboardPage() {
         </Stat>
         <Stat label="Transactions">{summary.count}</Stat>
         <Stat label="Uncategorized">{summary.bySource.none}</Stat>
+        <Stat label="Agent proposals to review">
+          <Link to={linkTo("/review")}>{toReview}</Link>
+        </Stat>
+        <Stat label="Waiting for you (by hand)">
+          {byHandName ? <Link to={linkTo("/transactions", `&category=${encodeURIComponent(byHandName)}`)}>{byHand}</Link> : byHand}
+        </Stat>
       </div>
 
       <p className="muted">

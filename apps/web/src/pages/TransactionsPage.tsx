@@ -103,6 +103,7 @@ export function TransactionsPage() {
                   key={editing.id}
                   transaction={editing}
                   categories={categoryNames}
+                  byHandCategory={categories.data?.find((c) => c.system)?.name}
                   onCancel={() => setEditingId(null)}
                   onSaved={() => {
                     setEditingId(null);

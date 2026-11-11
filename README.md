@@ -17,7 +17,7 @@ It's a real tool I use every month: it fetches my Visa Cal statement, sorts ever
   It proposes a category with a confidence level and a reason. It never writes a final category itself.
 - **Approved proposals become rules.** The next month, the same merchant is handled by code, so the pile of unknown merchants shrinks over time.
 
-Out of ~100 transactions a month, about 10 reach the model, and a run costs about $0.05.
+Out of ~100 transactions a month, about 10 reach the model, and a run costs a fraction of a cent on Haiku (about $0.12 on Opus).
 
 ## The agent loop
 
@@ -111,7 +111,7 @@ npm run import -- file.xlsx   # or import the bank's export (the same file twice
 npm run report -- 2026-10     # monthly report   → data/reports/2026-10.md
 npm run export                # back up your rules → data/rules.json (gitignored)
 npm run agent -- 2026-10      # model proposes categories for unknown merchants
-npm run approve -- 2026-10    # review the proposals → rules, memory notes, categories
+npm run approve -- 2026-10    # review the proposals → rules, one-month answers, notes (or the Review page)
 npm run eval                  # list the eval cases (free); add -- --run to call the models
 npm test                      # unit tests, including the fake-model loop tests
 ```
@@ -132,11 +132,11 @@ A local dashboard over the same database, using the same categorize, report and 
 npm run dev                   # API on 127.0.0.1:3000 + web on localhost:5173
 ```
 
-Open http://localhost:5173. **Dashboard** and **Transactions** show one month (Transactions can also search all months, and edits a transaction's category or description, or turns the category into a rule for that merchant). **Rules** manages rules and categories. **Imports** uploads a Cal xlsx/csv, fetches a month from Cal (a ~30 s background job, using the login in `.env`), and lists every import. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
+Open http://localhost:5173. **Dashboard** and **Transactions** show one month (Transactions can also search all months, and edits a transaction's category or description, or turns the category into a rule for that merchant). **Review** runs the agent and answers its proposals: a rule for the merchant, this month only, or always by hand. "Always by hand" sends the merchant to `לסיווג ידני`, so it never reaches the agent again. **Rules** manages rules and categories. **Imports** uploads a Cal xlsx/csv, fetches a month from Cal (a ~30 s background job, using the login in `.env`), and lists every import. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Stack
 
-TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Opus 5.5), SheetJS, SQLite (Node's built-in `node:sqlite`), and `node:test`. The dashboard uses React, Vite, React Router and Express 5.
+TypeScript run with tsx, the [Anthropic TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript) (Claude Haiku 5.5 by default), SheetJS, SQLite (Node's built-in `node:sqlite`), and `node:test`. The dashboard uses React, Vite, React Router and Express 5.
 
 ## Privacy
 

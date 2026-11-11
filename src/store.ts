@@ -3,10 +3,12 @@ import type { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProposalsFile } from "./agent/proposals";
+import type { Answer } from "./agent/review";
 import * as importsDb from "./db/imports";
 import type { BatchInfo, ImportBatch, ImportResult } from "./db/imports";
 import { inTransaction, NotFoundError, openDb, ValidationError } from "./db/index";
-import { loadProposalsFile, saveProposalsFile } from "./db/proposals";
+import * as proposalsDb from "./db/proposals";
+import { loadProposalsFile, saveProposalsFile, type RunMeta } from "./db/proposals";
 import * as rulesDb from "./db/rules";
 import * as transactionsDb from "./db/transactions";
 import type { OverrideChange, StoredTransaction, TransactionSearch } from "./db/transactions";
@@ -129,7 +131,8 @@ export const renameCategory = (id: number, name: string) => rulesDb.renameCatego
 export const deleteCategory = (id: number) => rulesDb.deleteCategory(db(), id);
 
 /** Long-term memory: human-approved notes the agent reads on every run. Gitignored. */
-export const memoryPath = () => join(DATA_DIR, "memory.md");
+// MEMORY_PATH lets tests use a temp file instead of your real notes.
+export const memoryPath = () => process.env.MEMORY_PATH ?? join(DATA_DIR, "memory.md");
 
 const MEMORY_HEADER = "# Agent memory\n\nNotes from past reviews, one per line. Edit or delete freely.\n\n";
 
@@ -148,8 +151,8 @@ export function appendMemory(notes: string[]): void {
 }
 
 /** Saves an agent run, or, for a run already saved, which of its items have been reviewed. */
-export function saveProposals<T extends ProposalsFile>(_month: string, data: T): string {
-  saveProposalsFile(db(), data);
+export function saveProposals<T extends ProposalsFile>(_month: string, data: T, meta?: RunMeta): string {
+  saveProposalsFile(db(), data, meta);
   return `${dbLabel()} (agent run for ${data.month})`;
 }
 
@@ -164,3 +167,21 @@ export function saveReport(period: string, markdown: string): string {
   writeFile(path, markdown);
   return path;
 }
+
+// ---------- Review, one item at a time (M4) ----------
+
+export type { FlagRow, ProposalRow, ProposalStatus, RunRow } from "./db/proposals";
+
+export const latestRun = (month: string) => proposalsDb.latestRun(db(), month);
+export const listProposals = (month: string) => proposalsDb.listProposals(db(), month);
+export const listFlags = (month: string) => proposalsDb.listFlags(db(), month);
+export const getProposal = (id: number) => proposalsDb.getProposal(db(), id);
+export const getFlag = (id: number) => proposalsDb.getFlag(db(), id);
+export const recordProposalAnswer = (id: number, status: Exclude<proposalsDb.ProposalStatus, "pending">, answer: Answer) =>
+  proposalsDb.recordProposalAnswer(db(), id, status, answer);
+export const recordFlagAnswer = (id: number, status: "ok" | "noted") => proposalsDb.recordFlagAnswer(db(), id, status);
+export const setMonthCategory = (month: string, merchant: string, category: string) =>
+  transactionsDb.setMonthCategory(db(), month, merchant, category);
+
+/** Runs several store writes as one all-or-nothing change (applying one review answer). */
+export const asOneChange = <T>(work: () => T): T => inTransaction(db(), work);

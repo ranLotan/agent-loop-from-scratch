@@ -8,7 +8,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { loadRules, loadTransactions } from "../store";
-import { client, MODEL } from "./client";
+import { getClient, MODEL } from "./client";
 import { merchantsToReview } from "./merchants";
 import { proposeCategoryTool, type CategoryProposal } from "./tools";
 
@@ -44,7 +44,7 @@ let inputTokens = 0;
 let outputTokens = 0;
 
 async function call(): Promise<Anthropic.Message> {
-  const response = await client.messages.create({
+  const response = await getClient().messages.create({
     model: MODEL,
     max_tokens: 4000,
     system,
