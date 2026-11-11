@@ -2,7 +2,7 @@
 
 This document has two clearly separate parts:
 - **Part A: Original architecture** is the CLI as it was before the dashboard (verified against commit `ce8c87d`). Kept for reference.
-- **Part B: Target architecture** is the local dashboard. **M1 and M2 are built** (React + read API, SQLite, imports). Sections still marked *(M3+)* are planned, not built.
+- **Part B: Target architecture** is the local dashboard. **M1–M3 are built** (React, SQLite, imports, editing, rules). Sections still marked *(M3+)* are planned, not built.
 
 The detailed module-by-module assessment is in [`milestones/milestone-0-assessment.md`](milestones/milestone-0-assessment.md).
 
@@ -42,7 +42,7 @@ A TypeScript CLI run with `tsx`. All state was plain files under `data/`.
 
 ---
 
-## Part B: Target architecture (M1–M2 built, M3+ planned)
+## Part B: Target architecture (M1–M3 built, M4+ planned)
 
 ### Overview
 
@@ -80,15 +80,16 @@ cal-expence-agent/
       src/
         main.tsx  App.tsx  api.ts (the only file that calls fetch)  format.ts  index.css
         hooks/            # useApi, useSelectedMonth
-        pages/            # Dashboard, Transactions, Imports, NotFound; Review, Rules (M3+)
+        pages/            # Dashboard, Transactions, Rules, Imports, NotFound; Review (M4)
         components/       # Layout, MonthGate, MonthPicker, CategoryTable, TransactionsTable,
-                          # SourceBadge, Stat, ImportHistory, ScrapePanel
+                          # EditTransactionForm, SourceBadge, Stat, ImportHistory, ScrapePanel
     api/                  # Express 5
       src/
         app.ts            # createApp(deps): middleware + routes (thin)
         server.ts         # wires the real core, listen(3000, "127.0.0.1")
+        deps.ts           # the real core behind every route (server + route tests)
         jobs.ts           # in-memory background jobs
-        app.test.ts
+        app.test.ts  edit-routes.test.ts
   src/                    # the core
     db/                   # index (open, migrate, transactions), transactions, rules, proposals,
                           # imports, migrate-json + migrate/export scripts, migrations/NNN_*.sql
@@ -120,7 +121,7 @@ cal-expence-agent/
 - Endpoints:
   - Built: `GET /api/months`, `GET /api/months/:month/summary` (`summarize()` + the previous month), `GET /api/months/:month/transactions`
   - Built: `GET /api/imports`, `POST /api/imports?name=&month=` (the file is the raw `application/octet-stream` body, no multipart library), `POST /api/scrape {month}` → `202 {jobId}`, `GET /api/jobs/:id`
-  - *(M3)* `GET /api/transactions?month=&q=&category=&source=`, `PATCH /api/transactions/:id`, `/api/rules`, `/api/categories`
+  - Built (M3): `GET /api/transactions?from=&to=&q=&category=&source=&currency=` (across months), `PATCH /api/transactions/:id {category, description, createRule}`, `/api/rules` and `/api/categories` (GET, POST, PATCH, DELETE). Typed core errors map to 400/404/409.
   - *(M4)* `POST /api/agent-runs` → job id, `GET /api/proposals?status=pending`, `POST /api/proposals/:id/answer`
 
 ### 2. How the agent is invoked *(M4)*
@@ -196,7 +197,7 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 | Reports | Markdown output | | | **Generated on demand** from `summarize()`. Files only for the CLI. |
 | Eval results | History of eval runs | | | **Stays files** (`data/evals/`) |
 
-**Effective category** of a transaction *(M3)*, computed in code and not stored twice: `category_override` → matching rule → Cal `sector` → null. Its **source** is `manual`/`agent` → `rule` → `cal` → none. This extends `categorize()`, which already returns `categorySource`.
+**Effective category** of a transaction (built in M3), computed in code and not stored twice: `category_override` → matching rule → Cal `sector` → null. Its **source** is `manual`/`agent` → `rule` → `cal` → none. This extends `categorize()`, which already returns `categorySource`.
 
 **Tables and their foreign keys** (as built; recurring tables come in M5):
 

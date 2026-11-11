@@ -14,6 +14,7 @@ export function Layout() {
             Dashboard
           </NavLink>
           <NavLink to={{ pathname: "/transactions", search }}>Transactions</NavLink>
+          <NavLink to={{ pathname: "/rules", search }}>Rules</NavLink>
           <NavLink to={{ pathname: "/imports", search }}>Imports</NavLink>
         </nav>
       </header>

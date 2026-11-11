@@ -6,6 +6,15 @@ import { fileURLToPath } from "node:url";
 const MIGRATIONS_DIR = fileURLToPath(new URL("./migrations", import.meta.url));
 const DEFAULT_PATH = fileURLToPath(new URL("../../data/app.db", import.meta.url));
 
+/** Bad input from the caller (unknown category, empty name...): the API answers 400. */
+export class ValidationError extends Error {}
+
+/** An id that doesn't exist: the API answers 404. */
+export class NotFoundError extends Error {}
+
+/** A change that would break data that depends on it (e.g. deleting a category in use): the API answers 409. */
+export class ConflictError extends Error {}
+
 /** Runs `work` as one all-or-nothing database transaction. Inside another one, it joins it. */
 export function inTransaction<T>(db: DatabaseSync, work: () => T): T {
   if (db.isTransaction) return work(); // SQLite can't nest BEGIN; the outer transaction decides

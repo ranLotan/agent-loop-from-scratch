@@ -75,7 +75,7 @@ test("rule beats Cal's sector, Cal's sector beats nothing; totals stay per curre
   const s = summarize(categorized);
   assert.deepEqual(s.currencies, ["ILS", "EUR"]);
   assert.deepEqual(s.totals, { ILS: 211, EUR: 39.3 });
-  assert.deepEqual(s.bySource, { rule: 1, cal: 2, none: 1 });
+  assert.deepEqual(s.bySource, { manual: 0, agent: 0, rule: 1, cal: 2, none: 1 });
   assert.deepEqual(s.uncategorized, [{ merchant: "ALMYRIKI", totals: { EUR: 39.3 }, count: 1 }]);
 });
 

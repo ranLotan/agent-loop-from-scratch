@@ -7,13 +7,16 @@ import express, { type ErrorRequestHandler, type RequestHandler, type Response }
 import { extname } from "node:path";
 import { categorize, validateRules } from "../../../src/categorize";
 import type { ImportBatch } from "../../../src/db/imports";
+import { ConflictError, NotFoundError, ValidationError } from "../../../src/db/index";
+import type { CategoryRow, RuleRow } from "../../../src/db/rules";
+import type { OverrideChange, StoredTransaction, TransactionSearch } from "../../../src/db/transactions";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import { isMonth } from "../../../src/normalize";
 import { summarize } from "../../../src/report";
 import type { CategorizedTransaction, RulesFile, Transaction } from "../../../src/types";
 import { createJobs } from "./jobs";
 
-/** Everything the routes use. server.ts passes the real core functions; tests pass fakes. */
+/** Everything the routes use. deps.ts passes the real core functions; tests pass fakes or the real ones. */
 export interface Deps {
   listMonths(): string[];
   loadTransactions(month: string): Transaction[] | null;
@@ -21,7 +24,20 @@ export interface Deps {
   importStatement(bytes: Buffer, fileName: string, month?: string): StatementImport;
   listImports(): ImportBatch[];
   fetchMonth(month: string): Promise<FetchImport>;
+  // M3: editing
+  searchTransactions(search: TransactionSearch): StoredTransaction[];
+  editTransaction(id: string, change: OverrideChange, opts: { createRule?: boolean }): StoredTransaction;
+  listRules(): RuleRow[];
+  setRule(merchant: string, category: string): RuleRow;
+  updateRule(id: number, category: string): RuleRow;
+  deleteRule(id: number): void;
+  listCategories(): CategoryRow[];
+  addCategory(name: string): CategoryRow;
+  renameCategory(id: number, name: string): CategoryRow;
+  deleteCategory(id: number): void;
 }
+
+const SOURCES = new Set(["manual", "agent", "rule", "cal", "none"]);
 
 const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1"]);
 const ALLOWED_ORIGINS = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
@@ -55,8 +71,14 @@ const originCheck: RequestHandler = (req, res, next) => {
 
 /** Express 5 sends errors thrown in (async) routes here. Four arguments = error handler. */
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  // Body parsers set a 4xx status (413 too large, 400 bad JSON); keep it. Anything else is our bug.
-  const status = typeof err.status === "number" && err.status >= 400 && err.status < 500 ? err.status : 500;
+  // The core's typed errors say what went wrong; body parsers set a 4xx status (413 too large, 400 bad JSON).
+  // Anything else is our bug, so it stays a 500 and gets logged.
+  const status =
+    err instanceof ValidationError ? 400
+    : err instanceof NotFoundError ? 404
+    : err instanceof ConflictError ? 409
+    : typeof err.status === "number" && err.status >= 400 && err.status < 500 ? err.status
+    : 500;
   if (status === 500) console.error(err);
   res.status(status).json({ error: (err as Error).message ?? "Internal error" });
 };
@@ -178,6 +200,100 @@ export function createApp(deps: Deps) {
       return;
     }
     res.json(job);
+  });
+
+  // ---------- M3: search and edit ----------
+
+  // GET /api/transactions?from=&to=&q=&category=&source=&currency=   (every filter optional)
+  app.get("/api/transactions", (req, res) => {
+    const { from, to, q, category, source, currency } = req.query;
+    for (const value of [from, to]) if (value !== undefined && value !== "" && !requireMonth(value, res)) return;
+    if (source !== undefined && (typeof source !== "string" || !SOURCES.has(source))) {
+      res.status(400).json({ error: "source must be one of manual, agent, rule, cal, none" });
+      return;
+    }
+    const text = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
+    const rules = deps.loadRules();
+    validateRules(rules);
+    // SQL narrows by month and text; the category is computed by categorize(), so it's filtered after it.
+    const rows = categorize(deps.searchTransactions({ from: text(from), to: text(to), q: text(q), currency: text(currency) }), rules);
+    res.json(
+      rows.filter(
+        (t) => (!text(category) || t.category === category) && (!text(source) || (t.categorySource ?? "none") === source),
+      ),
+    );
+  });
+
+  // PATCH /api/transactions/:id  { category?: string|null, description?: string|null, createRule?: boolean }
+  app.patch("/api/transactions/:id", (req, res) => {
+    const body = req.body ?? {};
+    const { category, description, createRule } = body;
+    const optionalText = (v: unknown) => v === undefined || v === null || typeof v === "string";
+    if (!optionalText(category) || !optionalText(description) || (createRule !== undefined && typeof createRule !== "boolean")) {
+      res.status(400).json({ error: "Expected { category?: string | null, description?: string | null, createRule?: boolean }" });
+      return;
+    }
+    const change: OverrideChange = {};
+    if (category !== undefined) change.category = category === "" ? null : category;
+    if (description !== undefined) change.description = description?.trim() || null; // blank = back to the bank's name
+    const saved = deps.editTransaction(req.params.id, change, { createRule });
+    const [categorized] = categorize([saved], deps.loadRules());
+    res.json({ ...categorized, billingMonth: saved.billingMonth });
+  });
+
+  const idOf = (raw: string, res: Response): number | null => {
+    const id = Number(raw);
+    if (Number.isInteger(id) && id > 0) return id;
+    res.status(400).json({ error: `Not an id: "${raw}"` });
+    return null;
+  };
+  const requireText = (value: unknown, field: string, res: Response): string | null => {
+    if (typeof value === "string" && value.trim()) return value;
+    res.status(400).json({ error: `${field} is required` });
+    return null;
+  };
+
+  app.get("/api/rules", (_req, res) => {
+    res.json(deps.listRules());
+  });
+  app.post("/api/rules", (req, res) => {
+    const merchant = requireText(req.body?.merchant, "merchant", res);
+    const category = merchant && requireText(req.body?.category, "category", res);
+    if (!merchant || !category) return;
+    res.status(201).json(deps.setRule(merchant, category));
+  });
+  app.patch("/api/rules/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const category = id && requireText(req.body?.category, "category", res);
+    if (!id || !category) return;
+    res.json(deps.updateRule(id, category));
+  });
+  app.delete("/api/rules/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    deps.deleteRule(id);
+    res.status(204).end();
+  });
+
+  app.get("/api/categories", (_req, res) => {
+    res.json(deps.listCategories());
+  });
+  app.post("/api/categories", (req, res) => {
+    const name = requireText(req.body?.name, "name", res);
+    if (!name) return;
+    res.status(201).json(deps.addCategory(name));
+  });
+  app.patch("/api/categories/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const name = id && requireText(req.body?.name, "name", res);
+    if (!id || !name) return;
+    res.json(deps.renameCategory(id, name));
+  });
+  app.delete("/api/categories/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    deps.deleteCategory(id);
+    res.status(204).end();
   });
 
   // Unknown /api paths get JSON, not Express's default HTML page.

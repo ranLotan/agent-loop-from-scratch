@@ -4,6 +4,7 @@ import { MonthGate } from "./components/MonthGate";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ImportsPage } from "./pages/ImportsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { RulesPage } from "./pages/RulesPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
             <Route path="transactions" element={<TransactionsPage />} />
           </Route>
           <Route path="imports" element={<ImportsPage />} />
+          <Route path="rules" element={<RulesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

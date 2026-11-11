@@ -24,7 +24,8 @@ const RULES: RulesFile = { categories: ["מזון ומשקאות", "פנאי ב�
 let rules = RULES;
 let finishScrape: (result: unknown) => void = () => {};
 const imported: { name: string; month?: string; size: number }[] = [];
-const deps: Deps = {
+// Only the routes this file tests; the M3 edit routes run against the real core in edit-routes.test.ts.
+const deps: Partial<Deps> = {
   listMonths: () => Object.keys(MONTHS).sort(),
   loadTransactions: (m) => MONTHS[m] ?? null,
   loadRules: () => rules,
@@ -40,7 +41,7 @@ const deps: Deps = {
 let server: Server;
 let port: number;
 before(async () => {
-  server = createApp(deps).listen(0, "127.0.0.1"); // 0 = any free port
+  server = createApp(deps as Deps).listen(0, "127.0.0.1"); // 0 = any free port
   await new Promise((resolve) => server.once("listening", resolve));
   port = (server.address() as AddressInfo).port;
 });
@@ -84,7 +85,7 @@ test("GET summary uses the core: rule beats sector, previous month included", as
   assert.equal(status, 200);
   assert.equal(body.month, "2026-10");
   assert.deepEqual(body.summary.totals, { ILS: 200 });
-  assert.deepEqual(body.summary.bySource, { rule: 1, cal: 1, none: 1 });
+  assert.deepEqual(body.summary.bySource, { manual: 0, agent: 0, rule: 1, cal: 1, none: 1 });
   assert.equal(body.previous.month, "2026-09");
   assert.deepEqual(body.previous.summary.totals, { ILS: 100 });
 });

@@ -1,5 +1,16 @@
 # Milestone 3: Transaction management
 
+**Status: done** (2026-11-11). The acceptance criteria below are met (100 tests, plus a check on a copy of the real database).
+
+## What was built, and decisions
+- **Priority** in `categorize()`: your edit on one transaction → your rule → Cal's sector → uncategorized. Sources `manual` / `agent` (M4) / `rule` / `cal`. The report and dashboard count edits separately.
+- **The edit dropdown offers only your categories.** Cal-only sectors (4 in the data, 18 rows) still show as the category, labeled Cal, until you change them.
+- **"Make it a rule"** sets the merchant's rule and clears this transaction's own category edit, so the rule applies everywhere (67 charges followed it in the real-data check). Your other hand edits on that merchant stay; an edit beats a rule.
+- **Search** (`GET /api/transactions`) runs across months in SQL (month range, text in the merchant or your description, currency). Category and source are filtered after `categorize()`, because they're computed. The UI offers this month or all months; filters live in the URL.
+- **Typed errors** (`ValidationError`, `NotFoundError`, `ConflictError` in `src/db/index.ts`) map to 400/404/409. Anything else stays a 500.
+- **Renaming a category** updates rules (by id) and edits (stored as text) in one transaction. **A category in use can't be deleted** (409).
+- **Not done, not needed yet:** sorting and pagination (538 rows load at once), a card filter, an arbitrary month range in the UI (the API supports `from`/`to`), and UI component tests (decided against).
+
 ## Objectives
 - Edit data from the UI: transaction category/description, rules, categories.
 - Learn React forms (controlled inputs), lifting state, URL state for filters, and optimistic vs. refetch updates.

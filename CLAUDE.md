@@ -31,7 +31,7 @@ The agent only handles judgment: proposing categories for unknown merchants and 
 
 ## Pipeline
 1. `fetch`: scrape Cal for a month and save it to SQLite as an import batch. Support manual Excel/CSV export from Cal as a fallback input (CLI `import`, or the dashboard's Imports page).
-2. `categorize`: apply rules (code only). Priority: my rule → Cal's sector (ענף) from the statement → uncategorized.
+2. `categorize`: code only. Priority: my edit on that one transaction → my rule for the merchant → Cal's sector (ענף) from the statement → uncategorized.
 3. `agent`: handle unmatched transactions and flag exceptions (above a threshold, new merchant, foreign currency, possible duplicate, new subscription).
 4. `approve`: CLI prompt to approve or re-categorize each suggestion (Todoist integration may come later).
 5. `learn`: write approved results back to rules or memory.

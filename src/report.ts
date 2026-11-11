@@ -16,7 +16,8 @@ export interface Summary {
   totals: Totals;
   /** Currencies present, ILS first. */
   currencies: string[];
-  bySource: { rule: number; cal: number; none: number };
+  /** How many transactions got their category from each source. */
+  bySource: { manual: number; agent: number; rule: number; cal: number; none: number };
   byCategory: ({ category: string } & Group)[];
   uncategorized: ({ merchant: string } & Group)[];
 }
@@ -59,6 +60,8 @@ export function summarize(transactions: CategorizedTransaction[]): Summary {
     totals: groupBy(transactions, () => "all").get("all")?.totals ?? {},
     currencies,
     bySource: {
+      manual: transactions.filter((t) => t.categorySource === "manual").length,
+      agent: transactions.filter((t) => t.categorySource === "agent").length,
       rule: transactions.filter((t) => t.categorySource === "rule").length,
       cal: transactions.filter((t) => t.categorySource === "cal").length,
       none: transactions.filter((t) => t.categorySource === null).length,
@@ -83,6 +86,19 @@ function money(n: number | undefined, currency: string): string {
   return `${n < 0 ? "-" : ""}${symbol(currency)}${abs}`;
 }
 
+/** "3 edited by you · 11 from your rules · ...": edits and agent only when there are any. */
+function sourcesLine({ bySource: b }: Summary): string {
+  return [
+    b.manual ? `${b.manual} edited by you` : "",
+    b.agent ? `${b.agent} from approved agent proposals` : "",
+    `${b.rule} from your rules`,
+    `${b.cal} from Cal's sector`,
+    `${b.none} uncategorized`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 const pct = (part = 0, whole = 0) => (part && whole ? `${Math.round((part / whole) * 100)}%` : "");
 
 export function renderMarkdown(month: string, s: Summary): string {
@@ -96,7 +112,7 @@ export function renderMarkdown(month: string, s: Summary): string {
     "",
     `**Total:** ${allAmounts(s.totals)} · ${s.count} transactions`,
     "",
-    `**Categories:** ${s.bySource.rule} from your rules · ${s.bySource.cal} from Cal's sector · ${s.bySource.none} uncategorized`,
+    `**Categories:** ${sourcesLine(s)}`,
   ];
   if (cur.length > 1) {
     lines.push(
@@ -150,7 +166,7 @@ export function renderAnnualMarkdown(year: string, months: { month: string; summ
     "",
     `**Total:** ${allAmounts(y.totals)} · ${y.count} transactions · ${months.length} months (${months.map((m) => label(m.month)).join(", ")})`,
     "",
-    `**Categories:** ${y.bySource.rule} from your rules · ${y.bySource.cal} from Cal's sector · ${y.bySource.none} uncategorized`,
+    `**Categories:** ${sourcesLine(y)}`,
     "",
     "## By month",
     "",

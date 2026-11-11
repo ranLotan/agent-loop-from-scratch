@@ -2,9 +2,8 @@
 // Run with: npm run dev -w apps/api   (or npm run dev for API + web together)
 
 import { fileURLToPath } from "node:url";
-import { fetchMonth, importStatement } from "../../../src/imports";
-import { listAllMonths, listImports, loadRules, loadTransactions } from "../../../src/store";
 import { createApp } from "./app";
+import { realDeps } from "./deps";
 
 try {
   // The repo root's .env, by path: `npm run dev` starts this server with apps/api as the working directory,
@@ -19,13 +18,7 @@ const port = Number(process.env.API_PORT ?? 3000);
 // 127.0.0.1, not 0.0.0.0: the API is not reachable from the local network.
 const host = "127.0.0.1";
 
-createApp({
-  listMonths: listAllMonths,
-  loadTransactions,
-  loadRules,
-  importStatement,
-  listImports,
-  fetchMonth: (month) => fetchMonth(month),
-}).listen(port, host, () => {
+// The database opens on first use, after .env (and its optional DB_PATH) is loaded above.
+createApp(realDeps()).listen(port, host, () => {
   console.log(`API listening on http://${host}:${port}`);
 });

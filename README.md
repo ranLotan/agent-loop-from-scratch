@@ -132,7 +132,7 @@ A local dashboard over the same database, using the same categorize, report and 
 npm run dev                   # API on 127.0.0.1:3000 + web on localhost:5173
 ```
 
-Open http://localhost:5173. **Dashboard** and **Transactions** show one month. **Imports** uploads a Cal xlsx/csv, fetches a month from Cal (a ~30 s background job, using the login in `.env`), and lists every import. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
+Open http://localhost:5173. **Dashboard** and **Transactions** show one month (Transactions can also search all months, and edits a transaction's category or description, or turns the category into a rule for that merchant). **Rules** manages rules and categories. **Imports** uploads a Cal xlsx/csv, fetches a month from Cal (a ~30 s background job, using the login in `.env`), and lists every import. The API listens on loopback only and has no login, so it's for your own machine. The plan is in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Stack
 

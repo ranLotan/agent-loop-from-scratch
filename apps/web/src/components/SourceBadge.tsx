@@ -1,6 +1,12 @@
 import type { CategorizedTransaction } from "../../../../src/types";
 
-const LABELS = { rule: "Rule", cal: "Cal" } as const;
+// Record<…> makes TypeScript insist on a label for every source, so a new one can't be forgotten.
+const LABELS: Record<NonNullable<CategorizedTransaction["categorySource"]>, string> = {
+  manual: "Manual",
+  agent: "Agent",
+  rule: "Rule",
+  cal: "Cal",
+};
 
 /** How a transaction got its category. */
 export function SourceBadge({ source }: { source: CategorizedTransaction["categorySource"] }) {

@@ -34,8 +34,10 @@ export function DashboardPage() {
       </div>
 
       <p className="muted">
-        Categories: {summary.bySource.rule} from your rules · {summary.bySource.cal} from Cal's sector ·{" "}
-        {summary.bySource.none} uncategorized
+        Categories: {summary.bySource.manual > 0 && `${summary.bySource.manual} edited by you · `}
+        {summary.bySource.agent > 0 && `${summary.bySource.agent} from approved agent proposals · `}
+        {summary.bySource.rule} from your rules · {summary.bySource.cal} from Cal's sector · {summary.bySource.none}{" "}
+        uncategorized
       </p>
 
       <h2>By category</h2>

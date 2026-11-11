@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import type { ProposalsFile } from "./agent/proposals";
 import * as importsDb from "./db/imports";
 import type { BatchInfo, ImportBatch, ImportResult } from "./db/imports";
-import { openDb } from "./db/index";
+import { inTransaction, NotFoundError, openDb, ValidationError } from "./db/index";
 import { loadProposalsFile, saveProposalsFile } from "./db/proposals";
 import * as rulesDb from "./db/rules";
 import * as transactionsDb from "./db/transactions";
+import type { OverrideChange, StoredTransaction, TransactionSearch } from "./db/transactions";
 import type { Rule, RulesFile, Transaction } from "./types";
 
 // The one place the rest of the code reads and writes state. Business data lives in SQLite
@@ -90,6 +91,42 @@ export function addRules(newRules: Rule[]): void {
 export function addCategories(names: string[]): void {
   rulesDb.addCategories(db(), names, "owner");
 }
+
+// ---------- Editing from the dashboard (M3) ----------
+
+export type { CategoryRow, RuleRow } from "./db/rules";
+export type { OverrideChange, StoredTransaction, TransactionSearch } from "./db/transactions";
+export { ConflictError, NotFoundError, ValidationError } from "./db/index";
+
+export const searchTransactions = (search?: TransactionSearch) => transactionsDb.searchTransactions(db(), search);
+export const getTransaction = (id: string) => transactionsDb.getTransaction(db(), id);
+
+/**
+ * Edits one transaction. With `createRule`, the category becomes a rule for the merchant instead:
+ * every charge of that merchant follows it, so this one's own category edit is cleared rather than duplicated.
+ * The description edit is kept either way. All or nothing.
+ */
+export function editTransaction(id: string, change: OverrideChange, opts: { createRule?: boolean } = {}): StoredTransaction {
+  return inTransaction(db(), () => {
+    const current = transactionsDb.getTransaction(db(), id);
+    if (!current) throw new NotFoundError(`No transaction ${id}`);
+    if (!opts.createRule) return transactionsDb.setOverride(db(), id, change);
+
+    if (!change.category) throw new ValidationError("Pick a category to make a rule");
+    rulesDb.setRule(db(), current.merchant, change.category, "manual");
+    return transactionsDb.setOverride(db(), id, { ...change, category: null });
+  });
+}
+
+export const listRules = () => rulesDb.listRules(db());
+export const setRule = (merchant: string, category: string) => rulesDb.setRule(db(), merchant, category, "manual");
+export const updateRule = (id: number, category: string) => rulesDb.updateRule(db(), id, category);
+export const deleteRule = (id: number) => rulesDb.deleteRule(db(), id);
+
+export const listCategories = () => rulesDb.listCategories(db());
+export const addCategory = (name: string) => rulesDb.addCategory(db(), name);
+export const renameCategory = (id: number, name: string) => rulesDb.renameCategory(db(), id, name);
+export const deleteCategory = (id: number) => rulesDb.deleteCategory(db(), id);
 
 /** Long-term memory: human-approved notes the agent reads on every run. Gitignored. */
 export const memoryPath = () => join(DATA_DIR, "memory.md");

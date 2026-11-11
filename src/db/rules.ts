@@ -3,7 +3,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeMerchant } from "../categorize";
 import type { Rule, RulesFile } from "../types";
-import { inTransaction } from "./index";
+import { ConflictError, inTransaction, NotFoundError, ValidationError } from "./index";
 
 /** The rules.json text: one category and one rule per line, so it stays easy to read and diff by hand. */
 export function formatRulesFile(file: RulesFile): string {
@@ -55,4 +55,129 @@ export function addRules(db: DatabaseSync, rules: Rule[], createdFrom: "seed" | 
       return added + Number(add.run(r.merchant, normalizeMerchant(r.merchant), category.id, createdFrom, now).changes);
     }, 0),
   );
+}
+
+// ---------- Editing rules and categories (M3) ----------
+
+export interface RuleRow {
+  id: number;
+  merchant: string;
+  category: string;
+  createdFrom: "seed" | "approve" | "manual";
+}
+
+export interface CategoryRow {
+  id: number;
+  name: string;
+  origin: "seed" | "owner";
+  /** How many rules and transaction edits use it; a category in use can't be deleted. */
+  rules: number;
+  edits: number;
+}
+
+export function listRules(db: DatabaseSync): RuleRow[] {
+  return db
+    .prepare(`
+      SELECT r.id, r.merchant, c.name AS category, r.created_from
+      FROM merchant_rules r JOIN categories c ON c.id = r.category_id
+      ORDER BY r.merchant
+    `)
+    .all()
+    .map((row) => ({
+      id: Number(row.id),
+      merchant: row.merchant as string,
+      category: row.category as string,
+      createdFrom: row.created_from as RuleRow["createdFrom"],
+    }));
+}
+
+function categoryIdOf(db: DatabaseSync, name: string): number {
+  const row = db.prepare("SELECT id FROM categories WHERE name = ?").get(name);
+  if (!row) throw new ValidationError(`Unknown category "${name}"`);
+  return Number(row.id);
+}
+
+/** Creates the merchant's rule, or changes its category if it has one (matching ignores case and spaces). */
+export function setRule(db: DatabaseSync, merchant: string, category: string, createdFrom: RuleRow["createdFrom"]): RuleRow {
+  const name = merchant.replace(/\s+/g, " ").trim();
+  if (!name) throw new ValidationError("The merchant name is empty");
+  const categoryId = categoryIdOf(db, category);
+  db.prepare(`
+    INSERT INTO merchant_rules (merchant, normalized_merchant, category_id, created_from, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT (normalized_merchant) DO UPDATE SET category_id = excluded.category_id
+  `).run(name, normalizeMerchant(name), categoryId, createdFrom, new Date().toISOString());
+  return listRules(db).find((r) => normalizeMerchant(r.merchant) === normalizeMerchant(name))!;
+}
+
+export function updateRule(db: DatabaseSync, id: number, category: string): RuleRow {
+  const categoryId = categoryIdOf(db, category);
+  const changed = db.prepare("UPDATE merchant_rules SET category_id = ? WHERE id = ?").run(categoryId, id).changes;
+  if (!changed) throw new NotFoundError(`No rule ${id}`);
+  return listRules(db).find((r) => r.id === id)!;
+}
+
+export function deleteRule(db: DatabaseSync, id: number): void {
+  if (!db.prepare("DELETE FROM merchant_rules WHERE id = ?").run(id).changes) throw new NotFoundError(`No rule ${id}`);
+}
+
+export function listCategories(db: DatabaseSync): CategoryRow[] {
+  return db
+    .prepare(`
+      SELECT c.id, c.name, c.origin,
+        (SELECT COUNT(*) FROM merchant_rules r WHERE r.category_id = c.id) AS rules,
+        (SELECT COUNT(*) FROM transactions t WHERE t.category_override = c.name) AS edits
+      FROM categories c ORDER BY c.id
+    `)
+    .all()
+    .map((row) => ({
+      id: Number(row.id),
+      name: row.name as string,
+      origin: row.origin as CategoryRow["origin"],
+      rules: Number(row.rules),
+      edits: Number(row.edits),
+    }));
+}
+
+function requireCategoryName(name: string): string {
+  const trimmed = name.replace(/\s+/g, " ").trim();
+  if (!trimmed) throw new ValidationError("The category name is empty");
+  return trimmed;
+}
+
+export function addCategory(db: DatabaseSync, name: string): CategoryRow {
+  const trimmed = requireCategoryName(name);
+  if (db.prepare("SELECT 1 FROM categories WHERE name = ?").get(trimmed)) throw new ConflictError(`"${trimmed}" already exists`);
+  addCategories(db, [trimmed], "owner");
+  return listCategories(db).find((c) => c.name === trimmed)!;
+}
+
+/**
+ * Renames a category everywhere it's used. Rules point to it by id, so they follow on their own;
+ * transaction edits store the name as text, so they're updated here, in the same transaction.
+ */
+export function renameCategory(db: DatabaseSync, id: number, newName: string): CategoryRow {
+  const trimmed = requireCategoryName(newName);
+  return inTransaction(db, () => {
+    const current = db.prepare("SELECT name FROM categories WHERE id = ?").get(id);
+    if (!current) throw new NotFoundError(`No category ${id}`);
+    if (current.name !== trimmed && db.prepare("SELECT 1 FROM categories WHERE name = ?").get(trimmed)) {
+      throw new ConflictError(`"${trimmed}" already exists`);
+    }
+    db.prepare("UPDATE categories SET name = ? WHERE id = ?").run(trimmed, id);
+    db.prepare("UPDATE transactions SET category_override = ? WHERE category_override = ?").run(trimmed, current.name);
+    return listCategories(db).find((c) => c.id === id)!;
+  });
+}
+
+/** Deletes an unused category. One still used by rules or edits is refused, so nothing is left pointing at nothing. */
+export function deleteCategory(db: DatabaseSync, id: number): void {
+  const category = listCategories(db).find((c) => c.id === id);
+  if (!category) throw new NotFoundError(`No category ${id}`);
+  if (category.rules || category.edits) {
+    throw new ConflictError(
+      `"${category.name}" is used by ${category.rules} rule(s) and ${category.edits} edited transaction(s). Change those first.`,
+    );
+  }
+  db.prepare("DELETE FROM categories WHERE id = ?").run(id);
 }

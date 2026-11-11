@@ -16,12 +16,14 @@ export function validateRules(rules: RulesFile): void {
 }
 
 /**
- * Pure code, no agent. Priority: your rule → Cal's sector (ענף) → null.
- * Rules win because they are your explicit decisions; Cal's sector is a generic default.
+ * Pure code, no agent. Priority: your edit on this transaction → your rule → Cal's sector (ענף) → null.
+ * An edit is about one charge, a rule about every charge of a merchant, Cal's sector is a generic default:
+ * the most specific decision wins.
  */
 export function categorize(transactions: Transaction[], rules: RulesFile): CategorizedTransaction[] {
   const byMerchant = new Map(rules.rules.map((r) => [normalizeMerchant(r.merchant), r.category]));
   return transactions.map((t) => {
+    if (t.categoryOverride) return { ...t, category: t.categoryOverride, categorySource: t.overrideSource ?? "manual" };
     const ruled = byMerchant.get(normalizeMerchant(t.merchant));
     if (ruled) return { ...t, category: ruled, categorySource: "rule" };
     if (t.sector) return { ...t, category: t.sector, categorySource: "cal" };

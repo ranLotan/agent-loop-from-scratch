@@ -26,6 +26,11 @@ export interface Transaction {
   /** Last 4 digits of the card; set by the scraper, which can return several cards. */
   card?: string;
   source: "xlsx" | "csv" | "scraper";
+  /** The owner's edits on this one transaction (M3). They beat any rule, and survive re-imports. */
+  categoryOverride?: string;
+  descriptionOverride?: string;
+  /** Who set categoryOverride: the owner by hand, or an approved agent proposal (M4). */
+  overrideSource?: "manual" | "agent";
 }
 
 /** Exact merchant → category mapping, applied by plain code. */
@@ -41,7 +46,8 @@ export interface RulesFile {
 }
 
 export interface CategorizedTransaction extends Transaction {
-  /** null = neither a rule nor Cal had a category; this is the pile the agent will handle. */
+  /** null = no edit, no rule and no Cal sector; this is the pile the agent will handle. */
   category: string | null;
-  categorySource: "rule" | "cal" | null;
+  /** Where `category` came from, most specific first: an edit on this transaction, a rule, Cal, nothing. */
+  categorySource: "manual" | "agent" | "rule" | "cal" | null;
 }
