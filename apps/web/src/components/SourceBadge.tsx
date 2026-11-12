@@ -5,7 +5,7 @@ const LABELS: Record<NonNullable<CategorizedTransaction["categorySource"]>, stri
   manual: "Manual",
   agent: "Agent",
   rule: "Rule",
-  cal: "Cal",
+  cal: "Cal rule",
 };
 
 /** How a transaction got its category. */

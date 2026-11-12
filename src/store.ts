@@ -113,7 +113,7 @@ export function addCategories(names: string[]): void {
 
 // ---------- Editing from the dashboard (M3) ----------
 
-export type { CategoryRow, RuleRow } from "./db/rules";
+export type { CalRuleRow, CategoryRow, RuleRow } from "./db/rules";
 export type { OverrideChange, StoredTransaction, TransactionSearch } from "./db/transactions";
 export { ConflictError, NotFoundError, ValidationError } from "./db/index";
 
@@ -141,6 +141,9 @@ export const listRules = () => rulesDb.listRules(db());
 export const setRule = (merchant: string, category: string) => rulesDb.setRule(db(), merchant, category, "manual");
 export const updateRule = (id: number, category: string) => rulesDb.updateRule(db(), id, category);
 export const deleteRule = (id: number) => rulesDb.deleteRule(db(), id);
+
+export const listCalRules = () => rulesDb.listCalRules(db());
+export const setCalRule = (sector: string, category: string | null) => rulesDb.setCalRule(db(), sector, category);
 
 export const listCategories = () => rulesDb.listCategories(db());
 export const addCategory = (name: string) => rulesDb.addCategory(db(), name);

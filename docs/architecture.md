@@ -198,6 +198,7 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 | `pending_charges` (M6, migration 005) | Charges not billed yet, from the latest scrape | `id` (meaningful only until the next scrape), `import_batch_id` → the scrape, `ledger_month`, `date`, `merchant`, `normalized_merchant`, `amount`, `currency`, `original_amount`, `original_currency`, `sector`, `card` | Replaced as a whole by every scrape | SQLite |
 | `categories` | Allowed categories | `id`, `name`, `created_at`, `origin` (seed/owner) | `UNIQUE(name)` | SQLite (seeded from `rules.json`, or `rules.example.json` on a fresh clone) |
 | `merchant_rules` | Exact merchant → category | `id`, `merchant`, `normalized_merchant`, `category_id` → categories, `created_from` (seed/approve/manual), `created_at` | `UNIQUE(normalized_merchant)` | SQLite. `npm run export` writes a gitignored `rules.json` backup |
+| `cal_rules` (migration 007) | Cal sector (ענף) → category, used when no merchant rule matches | `id`, `sector`, `category_id` → categories, `created_at` | `UNIQUE(sector)` | SQLite. Set on the Rules page (`GET`/`PUT /api/cal-rules`); included in the `rules.json` backup |
 | `agent_runs` | One agent execution | `id`, `billing_month`, `model`, `stopped_by`, `iterations`, `input_tokens`, `output_tokens`, `created_at` | | SQLite |
 | `agent_proposals` | A proposed category | `id`, `run_id` → runs, `merchant`, `category`, `confidence`, `reason`, `new_category_idea`, `status` (pending/approved/changed/new_category/noted/skipped, plus `answered`: reviewed, how not recorded), `answer_json`, `answered_at` | `UNIQUE(run_id, normalized_merchant)` | SQLite (replaces `data/proposals/*.json` and its `reviewed[]`) |
 | `exception_flags` | A flag the agent raised | `id`, `run_id`, `transaction_id` → transactions, `severity`, `explanation`, `reasons_json`, `status` (pending/ok/noted) | `UNIQUE(run_id, transaction_id)` | SQLite |
@@ -209,7 +210,7 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 | Reports | Markdown output | | | **Generated on demand** from `summarize()`. Files only for the CLI. |
 | Eval results | History of eval runs | | | **Stays files** (`data/evals/`) |
 
-**Effective category** of a transaction (built in M3), computed in code and not stored twice: `category_override` → matching rule → Cal `sector` → null. Its **source** is `manual`/`agent` → `rule` → `cal` → none. This extends `categorize()`, which already returns `categorySource`.
+**Effective category** of a transaction (built in M3), computed in code and not stored twice: `category_override` → matching rule → the Cal rule for its `sector` (migration 007) → null. Its **source** is `manual`/`agent` → `rule` → `cal` → none. A sector with no Cal rule is uncategorized (it goes to the agent); Cal's raw sector name is never a category. This closes risk R5 from M0. Because Cal rules are applied live, mapping a sector also re-categorizes past months. This extends `categorize()`, which already returns `categorySource`.
 
 **Tables and their foreign keys** (as built in M2–M4; M5 adds `recurring_definitions` → `categories` and `recurring_exceptions` → `recurring_definitions`):
 

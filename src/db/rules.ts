@@ -2,7 +2,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeMerchant } from "../categorize";
-import type { Rule, RulesFile } from "../types";
+import type { CalRule, Rule, RulesFile } from "../types";
 import { ConflictError, inTransaction, NotFoundError, ValidationError } from "./index";
 
 /** The rules.json text: one category and one rule per line, so it stays easy to read and diff by hand. */
@@ -11,7 +11,10 @@ export function formatRulesFile(file: RulesFile): string {
   const rules = file.rules
     .map((r) => `    { "merchant": ${JSON.stringify(r.merchant)}, "category": ${JSON.stringify(r.category)} }`)
     .join(",\n");
-  return `{\n  "categories": [\n${categories}\n  ],\n  "rules": [\n${rules}\n  ]\n}\n`;
+  const calRules = (file.calRules ?? [])
+    .map((r) => `    { "sector": ${JSON.stringify(r.sector)}, "category": ${JSON.stringify(r.category)} }`)
+    .join(",\n");
+  return `{\n  "categories": [\n${categories}\n  ],\n  "rules": [\n${rules}\n  ],\n  "calRules": [\n${calRules}\n  ]\n}\n`;
 }
 
 /** Categories and rules in the order they were added, like the old rules.json. */
@@ -26,7 +29,11 @@ export function loadRules(db: DatabaseSync): RulesFile {
     )
     .all()
     .map((row) => ({ merchant: row.merchant as string, category: row.category as string }));
-  return { categories, rules };
+  const calRules = db
+    .prepare("SELECT r.sector, c.name AS category FROM cal_rules r JOIN categories c ON c.id = r.category_id ORDER BY r.id")
+    .all()
+    .map((row) => ({ sector: row.sector as string, category: row.category as string }));
+  return { categories, rules, calRules };
 }
 
 /** Adds categories; names that already exist are skipped. Returns how many were added. */
@@ -72,8 +79,9 @@ export interface CategoryRow {
   origin: "seed" | "owner";
   /** Built in (the by-hand bucket): can't be renamed or deleted. */
   system: boolean;
-  /** How many rules and transaction edits use it; a category in use can't be deleted. */
+  /** How many rules, Cal rules and transaction edits use it; a category in use can't be deleted. */
   rules: number;
+  calRules: number;
   edits: number;
 }
 
@@ -128,6 +136,7 @@ export function listCategories(db: DatabaseSync): CategoryRow[] {
     .prepare(`
       SELECT c.id, c.name, c.origin, c.system,
         (SELECT COUNT(*) FROM merchant_rules r WHERE r.category_id = c.id) AS rules,
+        (SELECT COUNT(*) FROM cal_rules k WHERE k.category_id = c.id) AS cal_rules,
         (SELECT COUNT(*) FROM transactions t WHERE t.category_override = c.name) AS edits
       FROM categories c ORDER BY c.id
     `)
@@ -138,6 +147,7 @@ export function listCategories(db: DatabaseSync): CategoryRow[] {
       origin: row.origin as CategoryRow["origin"],
       system: Boolean(row.system),
       rules: Number(row.rules),
+      calRules: Number(row.cal_rules),
       edits: Number(row.edits),
     }));
 }
@@ -179,10 +189,64 @@ export function deleteCategory(db: DatabaseSync, id: number): void {
   const category = listCategories(db).find((c) => c.id === id);
   if (!category) throw new NotFoundError(`No category ${id}`);
   if (category.system) throw new ConflictError(`"${category.name}" is built in and can't be deleted`);
-  if (category.rules || category.edits) {
+  if (category.rules || category.calRules || category.edits) {
     throw new ConflictError(
-      `"${category.name}" is used by ${category.rules} rule(s) and ${category.edits} edited transaction(s). Change those first.`,
+      `"${category.name}" is used by ${category.rules} rule(s), ${category.calRules} Cal rule(s) and ${category.edits} ` +
+        "edited transaction(s). Change those first.",
     );
   }
   db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+}
+
+// ---------- Cal rules: Cal sector → my category ----------
+
+export interface CalRuleRow {
+  sector: string;
+  /** null = no Cal rule yet: charges in this sector stay uncategorized. */
+  category: string | null;
+  /** How many billed and pending charges carry this sector. */
+  count: number;
+}
+
+/**
+ * Every sector Cal has put on my charges, plus any Cal rule whose sector no charge has (anymore),
+ * so the page can offer the unmapped ones without me typing them in.
+ */
+export function listCalRules(db: DatabaseSync): CalRuleRow[] {
+  return db
+    .prepare(`
+      WITH seen AS (
+        SELECT sector FROM transactions WHERE sector IS NOT NULL AND sector <> ''
+        UNION ALL
+        SELECT sector FROM pending_charges WHERE sector IS NOT NULL AND sector <> ''
+      ),
+      sectors AS (
+        SELECT sector, COUNT(*) AS n FROM seen GROUP BY sector
+        UNION ALL
+        SELECT sector, 0 FROM cal_rules WHERE sector NOT IN (SELECT sector FROM seen)
+      )
+      SELECT s.sector, s.n, c.name AS category
+      FROM sectors s
+      LEFT JOIN cal_rules r ON r.sector = s.sector
+      LEFT JOIN categories c ON c.id = r.category_id
+      ORDER BY s.sector
+    `)
+    .all()
+    .map((row) => ({ sector: row.sector as string, category: (row.category as string | null) ?? null, count: Number(row.n) }));
+}
+
+/** Maps a sector to a category (creates or changes its Cal rule); null removes the Cal rule. */
+export function setCalRule(db: DatabaseSync, sector: string, category: string | null): CalRule | null {
+  const name = sector.trim();
+  if (!name) throw new ValidationError("The sector is empty");
+  if (category === null) {
+    db.prepare("DELETE FROM cal_rules WHERE sector = ?").run(name);
+    return null;
+  }
+  const categoryId = categoryIdOf(db, category);
+  db.prepare(`
+    INSERT INTO cal_rules (sector, category_id, created_at) VALUES (?, ?, ?)
+    ON CONFLICT (sector) DO UPDATE SET category_id = excluded.category_id
+  `).run(name, categoryId, new Date().toISOString());
+  return { sector: name, category };
 }

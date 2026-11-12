@@ -20,7 +20,7 @@ export interface Transaction {
   type?: string;
   /** Parsed from a memo like "תשלום 3 מתוך 3". */
   installments?: { number: number; total: number };
-  /** Cal's own business sector (ענף). Used as the default category when no rule matches. */
+  /** Cal's own business sector (ענף). A Cal rule can map it to one of my categories (used when no merchant rule matches). */
   sector?: string;
   memo?: string;
   /** Last 4 digits of the card; set by the scraper, which can return several cards. */
@@ -39,15 +39,23 @@ export interface Rule {
   category: string;
 }
 
+/** Cal sector → category mapping: the default for every charge in that sector, when no merchant rule matches. */
+export interface CalRule {
+  sector: string;
+  category: string;
+}
+
 export interface RulesFile {
-  /** Categories a rule may assign. Cal's sectors are accepted as-is. */
+  /** Categories a rule or Cal rule may assign. */
   categories: string[];
   rules: Rule[];
+  /** Optional so older rules.json files (and rules.example.json) still load. */
+  calRules?: CalRule[];
 }
 
 export interface CategorizedTransaction extends Transaction {
-  /** null = no edit, no rule and no Cal sector; this is the pile the agent will handle. */
+  /** null = no edit, no rule and no Cal rule for its sector; this is the pile the agent will handle. */
   category: string | null;
-  /** Where `category` came from, most specific first: an edit on this transaction, a rule, Cal, nothing. */
+  /** Where `category` came from, most specific first: an edit on this transaction, a rule, a Cal rule, nothing. */
   categorySource: "manual" | "agent" | "rule" | "cal" | null;
 }

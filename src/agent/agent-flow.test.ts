@@ -23,7 +23,8 @@ const { applyAnswer, answerFlag } = await import("./apply");
 const tx = (id: string, date: string, merchant: string, amount: number, sector?: string): Transaction => ({
   id, date, merchant, amount, currency: "ILS", source: "scraper", ...(sector && { sector }),
 });
-store.addCategories(["מסעדות", "שונות", "תיירות"]);
+store.addCategories(["מסעדות", "שונות", "תיירות", "בית"]);
+store.setCalRule("ריהוט ובית", "בית");
 store.importTransactions(
   "2026-09",
   [
@@ -31,7 +32,7 @@ store.importTransactions(
     tx("b1", "2026-09-02", "BIT", 100),
     tx("b2", "2026-09-05", "BIT", 250),
     tx("p1", "2026-09-03", "PAYBOX", 60),
-    tx("big", "2026-09-04", "Electronics", 4000, "ריהוט ובית"), // has a sector: not reviewed, but "large"
+    tx("big", "2026-09-04", "Electronics", 4000, "ריהוט ובית"), // its sector has a Cal rule: not reviewed, but "large"
   ],
   { source: "scraper" },
 );

@@ -8,7 +8,7 @@ import type { AgentRunResult } from "../../../src/agent/service";
 import type { FlagRow, ProposalCharge, ProposalRow, ProposalWithCharges, RunRow } from "../../../src/db/proposals";
 import type { ImportBatch } from "../../../src/db/imports";
 import type { Occurrence, RecurringDefinition, RecurringSummary } from "../../../src/recurring";
-import type { CategoryRow, RuleRow } from "../../../src/db/rules";
+import type { CalRuleRow, CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import type { Summary } from "../../../src/report";
 import type { CategorizedTransaction } from "../../../src/types";
@@ -47,7 +47,7 @@ const json = (method: string, body?: unknown): RequestInit => ({
 export type TransactionRow = CategorizedTransaction & { billingMonth: string; ledgerMonth: string };
 /** A charge not billed yet (M6). Read-only: the next scrape replaces it. */
 export type PendingRow = CategorizedTransaction & { ledgerMonth: string; pending: true; scrapedAt: string };
-export type { CategoryRow, RuleRow };
+export type { CalRuleRow, CategoryRow, RuleRow };
 
 /** Which month the month filter means: the purchase month (ledger) or the Cal statement it was billed on. */
 export type MonthBy = "ledger" | "billing";
@@ -111,6 +111,10 @@ export const api = {
   addRule: (merchant: string, category: string) => request<RuleRow>("/rules", json("POST", { merchant, category })),
   updateRule: (id: number, category: string) => request<RuleRow>(`/rules/${id}`, json("PATCH", { category })),
   deleteRule: (id: number) => request<void>(`/rules/${id}`, json("DELETE")),
+
+  calRules: () => request<CalRuleRow[]>("/cal-rules"),
+  /** null removes the mapping: that sector's charges become uncategorized again. */
+  setCalRule: (sector: string, category: string | null) => request<unknown>("/cal-rules", json("PUT", { sector, category })),
 
   categories: () => request<CategoryRow[]>("/categories"),
   addCategory: (name: string) => request<CategoryRow>("/categories", json("POST", { name })),

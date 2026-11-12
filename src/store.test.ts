@@ -34,6 +34,7 @@ test("rules: categories first, then rules; duplicates skipped; unknown category 
   assert.deepEqual(store.loadRules(), {
     categories: [MANUAL_CATEGORY, "מסעדות", "תיירות"], // the built-in bucket comes with every database
     rules: [{ merchant: "Aroma", category: "מסעדות" }],
+    calRules: [],
   });
   assert.throws(() => store.addRules([{ merchant: "X", category: "no such category" }]), /Unknown category/);
 });

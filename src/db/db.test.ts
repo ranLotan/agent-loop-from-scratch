@@ -4,6 +4,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import type { Transaction } from "../types";
 import { inTransaction, openDb, runMigrations } from "./index";
+import { addCategories, deleteCategory, listCalRules, listCategories, loadRules, renameCategory, setCalRule } from "./rules";
 import { listMonths, loadTransactions, upsertTransactions } from "./transactions";
 
 const FULL: Transaction = {
@@ -95,4 +96,41 @@ test("re-importing keeps the owner's edits", () => {
 
   const row = db.prepare("SELECT category_override, description_override, override_source FROM transactions WHERE id = 'min'").get()!;
   assert.deepEqual({ ...row }, { category_override: "מסעדות", description_override: "Dinner", override_source: "manual" });
+});
+
+test("Cal rules: every seen sector listed with its count; set, change and remove; category guards", () => {
+  const db = openDb(":memory:");
+  upsertTransactions(db, "2026-09", [FULL, { ...FULL, id: "full2" }, { ...MINIMAL, sector: "מסעדות" }, { ...MINIMAL, id: "none" }], null);
+  addCategories(db, ["חופשות", "טיולים"], "owner");
+
+  assert.deepEqual(listCalRules(db), [
+    { sector: "מסעדות", category: null, count: 1 },
+    { sector: "תיירות", category: null, count: 2 },
+  ]);
+
+  setCalRule(db, "תיירות", "חופשות");
+  setCalRule(db, "תיירות", "טיולים"); // changing it is an upsert, not a second rule
+  setCalRule(db, "ענף שנעלם", "חופשות"); // a rule whose sector no charge has still shows, with 0
+  assert.deepEqual(loadRules(db).calRules, [
+    { sector: "תיירות", category: "טיולים" },
+    { sector: "ענף שנעלם", category: "חופשות" },
+  ]);
+  assert.deepEqual(listCalRules(db).map((r) => [r.sector, r.category, r.count]), [
+    ["מסעדות", null, 1],
+    ["ענף שנעלם", "חופשות", 0],
+    ["תיירות", "טיולים", 2],
+  ]);
+
+  assert.throws(() => setCalRule(db, "תיירות", "nope"), /Unknown category/);
+  assert.throws(() => setCalRule(db, "  ", "חופשות"), /sector is empty/);
+
+  const trips = listCategories(db).find((c) => c.name === "טיולים")!;
+  assert.equal(trips.calRules, 1);
+  assert.throws(() => deleteCategory(db, trips.id), /1 Cal rule/);
+  renameCategory(db, trips.id, "טיסות"); // the Cal rule points by id: it follows
+  assert.equal(loadRules(db).calRules!.find((r) => r.sector === "תיירות")!.category, "טיסות");
+
+  setCalRule(db, "תיירות", null);
+  assert.equal(listCalRules(db).find((r) => r.sector === "תיירות")!.category, null);
+  deleteCategory(db, trips.id); // no longer in use
 });

@@ -11,7 +11,7 @@ interface EditTransactionFormProps {
   onCancel: () => void;
 }
 
-const SOURCE_TEXT = { manual: "your edit", agent: "an approved agent proposal", rule: "your rule", cal: "Cal's sector" } as const;
+const SOURCE_TEXT = { manual: "your edit", agent: "an approved agent proposal", rule: "your rule", cal: "your Cal rule" } as const;
 
 /** Edits one transaction: its category (or a rule for the merchant) and its description. */
 export function EditTransactionForm({ transaction: t, categories, byHandCategory, onSaved, onCancel }: EditTransactionFormProps) {
@@ -50,7 +50,7 @@ export function EditTransactionForm({ transaction: t, categories, byHandCategory
       <label>
         Category{" "}
         <select value={category} onChange={(e) => setCategory(e.target.value)} dir="auto">
-          <option value="">No edit: use the rule or Cal's sector</option>
+          <option value="">No edit: use the rule or Cal rule</option>
           {categories.map((name) => (
             <option key={name} value={name}>
               {name}

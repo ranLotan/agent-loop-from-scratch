@@ -92,7 +92,7 @@ function sourcesLine({ bySource: b }: Summary): string {
     b.manual ? `${b.manual} edited by you` : "",
     b.agent ? `${b.agent} from approved agent proposals` : "",
     `${b.rule} from your rules`,
-    `${b.cal} from Cal's sector`,
+    `${b.cal} from your Cal rules`,
     `${b.none} uncategorized`,
   ]
     .filter(Boolean)
@@ -142,7 +142,7 @@ export function renderMarkdown(month: string, s: Summary): string {
       "",
       "## Uncategorized merchants",
       "",
-      "No rule matched and Cal gave no sector. Run `npm run agent` to get proposals, then `npm run approve` to turn them into rules.",
+      "No rule matched and no Cal rule covers their sector. Map sectors on the dashboard's Rules page, or run `npm run agent` to get proposals, then `npm run approve` to turn them into rules.",
       "",
       "| Merchant | Amount | Txns |",
       "|---|---:|---:|",

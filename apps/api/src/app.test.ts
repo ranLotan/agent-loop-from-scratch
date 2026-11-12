@@ -15,11 +15,15 @@ const MONTHS: Record<string, Transaction[]> = {
   "2026-09": [tx("a", "2026-09-01", "שופרסל", 100, "מזון ומשקאות")],
   "2026-10": [
     tx("b", "2026-10-01", "שופרסל", 150, "מזון ומשקאות"),
-    tx("c", "2026-10-02", "Disney Plus", 40, "שונות"), // rule beats Cal's sector
+    tx("c", "2026-10-02", "Disney Plus", 40, "שונות"), // rule beats the sector (unmapped anyway)
     tx("d", "2026-10-03", "UNKNOWN", 10), // no rule, no sector
   ],
 };
-const RULES: RulesFile = { categories: ["מזון ומשקאות", "פנאי בילוי"], rules: [{ merchant: "Disney Plus", category: "פנאי בילוי" }] };
+const RULES: RulesFile = {
+  categories: ["מזון ומשקאות", "פנאי בילוי"],
+  rules: [{ merchant: "Disney Plus", category: "פנאי בילוי" }],
+  calRules: [{ sector: "מזון ומשקאות", category: "מזון ומשקאות" }],
+};
 
 let rules = RULES;
 let finishScrape: (result: unknown) => void = () => {};

@@ -58,16 +58,20 @@ test("statement import reads every section and verifies section totals", () => {
   assert.equal(euro.originalAmount, undefined);
 });
 
-test("rule beats Cal's sector, Cal's sector beats nothing; totals stay per currency", () => {
+test("rule beats a Cal rule, a Cal rule beats nothing, an unmapped sector is uncategorized; totals per currency", () => {
   const { transactions } = parseStatement(STATEMENT, "xlsx");
-  const rules = { categories: ["אוכל"], rules: [{ merchant: "שוק  הכיכר", category: "אוכל" }] };
+  const rules = {
+    categories: ["אוכל", "חופשות"],
+    rules: [{ merchant: "שוק  הכיכר", category: "אוכל" }],
+    calRules: [{ sector: "תיירות", category: "חופשות" }], // שונות has no Cal rule
+  };
   const categorized = categorize(transactions, rules);
   assert.deepEqual(
     categorized.map((t) => [t.category, t.categorySource]),
     [
       ["אוכל", "rule"],
-      ["שונות", "cal"],
-      ["תיירות", "cal"],
+      [null, null],
+      ["חופשות", "cal"],
       [null, null],
     ],
   );
@@ -75,12 +79,13 @@ test("rule beats Cal's sector, Cal's sector beats nothing; totals stay per curre
   const s = summarize(categorized);
   assert.deepEqual(s.currencies, ["ILS", "EUR"]);
   assert.deepEqual(s.totals, { ILS: 211, EUR: 39.3 });
-  assert.deepEqual(s.bySource, { manual: 0, agent: 0, rule: 1, cal: 2, none: 1 });
-  assert.deepEqual(s.uncategorized, [{ merchant: "ALMYRIKI", totals: { EUR: 39.3 }, count: 1 }]);
+  assert.deepEqual(s.bySource, { manual: 0, agent: 0, rule: 1, cal: 1, none: 2 });
+  assert.deepEqual(s.uncategorized.map((u) => u.merchant).sort(), ["ALMYRIKI", "דמי כרטיס"]);
 });
 
 test("annual report: per-month and year totals come from the same summarize()", () => {
-  const rules = { categories: [], rules: [] };
+  const sectors = ["מזון ומשקאות", "שונות", "תיירות"];
+  const rules = { categories: sectors, rules: [], calRules: sectors.map((s) => ({ sector: s, category: s })) };
   const sep = categorize(parseStatement(STATEMENT, "xlsx").transactions, rules);
   const oct = sep.map((t) => ({ ...t, id: `${t.id}-oct` }));
   const md = renderAnnualMarkdown(

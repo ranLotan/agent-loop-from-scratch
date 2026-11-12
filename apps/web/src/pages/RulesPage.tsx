@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, type CategoryRow, type RuleRow } from "../api";
+import { api, type CalRuleRow, type CategoryRow, type RuleRow } from "../api";
 import { useApi } from "../hooks/useApi";
 
 /** Runs a change, then reloads the page's data; shows the error if the server refused it. */
@@ -23,6 +23,7 @@ export function RulesPage() {
   const reload = () => setReloadKey((k) => k + 1);
   const categories = useApi(() => api.categories(), [reloadKey]);
   const rules = useApi(() => api.rules(), [reloadKey]);
+  const calRules = useApi(() => api.calRules(), [reloadKey]);
 
   return (
     <section>
@@ -38,6 +39,16 @@ export function RulesPage() {
       <h2>Categories</h2>
       {categories.error && <p role="alert">Error: {categories.error}</p>}
       {categories.data && <CategoriesTable categories={categories.data} onChanged={reload} />}
+
+      <h2>Cal rules</h2>
+      <p className="muted">
+        Map each Cal sector (ענף) to one of your categories. Used when a merchant has no rule. A sector that isn't mapped
+        leaves its charges uncategorized, so the agent reviews them.
+      </p>
+      {calRules.error && <p role="alert">Error: {calRules.error}</p>}
+      {calRules.data && categories.data && (
+        <CalRulesTable calRules={calRules.data} categories={categories.data} onChanged={reload} />
+      )}
     </section>
   );
 }
@@ -96,6 +107,47 @@ function RulesTable({ rules, categories, onChanged }: { rules: RuleRow[]; catego
   );
 }
 
+function CalRulesTable(props: { calRules: CalRuleRow[]; categories: CategoryRow[]; onChanged: () => void }) {
+  const { run, error, busy } = useMutation(props.onChanged);
+  const names = props.categories.map((c) => c.name);
+  const unmapped = props.calRules.filter((r) => r.category === null).length;
+
+  return (
+    <>
+      {error && <p role="alert">Error: {error}</p>}
+      {unmapped > 0 && <p className="muted">{unmapped} sector(s) not mapped yet.</p>}
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Cal sector</th>
+            <th className="num">Charges</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.calRules.map((r) => (
+            <tr key={r.sector}>
+              <td dir="auto">{r.sector}</td>
+              <td className="num">{r.count}</td>
+              <td>
+                {/* "" = not mapped: the select is controlled, like [(ngModel)], and saves on change. */}
+                <CategorySelect
+                  names={names}
+                  value={r.category ?? ""}
+                  placeholder="— not mapped —"
+                  disabled={busy}
+                  onChange={(next) => run(() => api.setCalRule(r.sector, next || null))}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!props.calRules.length && <p className="muted">No Cal sectors yet: import a statement first.</p>}
+    </>
+  );
+}
+
 function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[]; onChanged: () => void }) {
   const { run, error, busy } = useMutation(onChanged);
   const [newName, setNewName] = useState("");
@@ -124,13 +176,14 @@ function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[];
           <tr>
             <th>Category</th>
             <th className="num">Rules</th>
+            <th className="num">Cal rules</th>
             <th className="num">Edited transactions</th>
             <th />
           </tr>
         </thead>
         <tbody>
           {categories.map((c) => {
-            const inUse = c.rules + c.edits > 0;
+            const inUse = c.rules + c.calRules + c.edits > 0;
             const locked = c.system || inUse;
             return (
               <tr key={c.id}>
@@ -158,6 +211,7 @@ function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[];
                   )}
                 </td>
                 <td className="num">{c.rules}</td>
+                <td className="num">{c.calRules}</td>
                 <td className="num">{c.edits}</td>
                 <td>
                   <button
@@ -188,9 +242,15 @@ function CategoriesTable({ categories, onChanged }: { categories: CategoryRow[];
   );
 }
 
-function CategorySelect(props: { names: string[]; value: string; onChange: (name: string) => void; placeholder?: string }) {
+function CategorySelect(props: {
+  names: string[];
+  value: string;
+  onChange: (name: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
   return (
-    <select value={props.value} onChange={(e) => props.onChange(e.target.value)} dir="auto">
+    <select value={props.value} onChange={(e) => props.onChange(e.target.value)} dir="auto" disabled={props.disabled}>
       {props.placeholder && <option value="">{props.placeholder}</option>}
       {props.names.map((name) => (
         <option key={name} value={name}>

@@ -8,7 +8,7 @@ import { extname } from "node:path";
 import { categorize, validateRules } from "../../../src/categorize";
 import type { ImportBatch } from "../../../src/db/imports";
 import { ConflictError, NotFoundError, ValidationError } from "../../../src/db/index";
-import type { CategoryRow, RuleRow } from "../../../src/db/rules";
+import type { CalRuleRow, CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { OverrideChange, StoredTransaction, TransactionSearch } from "../../../src/db/transactions";
 import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
 import type { Answer } from "../../../src/agent/review";
@@ -22,7 +22,7 @@ import type { FetchImport, StatementImport } from "../../../src/imports";
 import type { DefinitionChanges, Occurrence, RecurringDefinition, RecurringException, RecurringSummary } from "../../../src/recurring";
 import { isMonth } from "../../../src/normalize";
 import { summarize } from "../../../src/report";
-import type { CategorizedTransaction, RulesFile, Transaction } from "../../../src/types";
+import type { CalRule, CategorizedTransaction, RulesFile, Transaction } from "../../../src/types";
 import { createJobs } from "./jobs";
 
 /** Everything the routes use. deps.ts passes the real core functions; tests pass fakes or the real ones. */
@@ -40,6 +40,8 @@ export interface Deps {
   setRule(merchant: string, category: string): RuleRow;
   updateRule(id: number, category: string): RuleRow;
   deleteRule(id: number): void;
+  listCalRules(): CalRuleRow[];
+  setCalRule(sector: string, category: string | null): CalRule | null;
   listCategories(): CategoryRow[];
   addCategory(name: string): CategoryRow;
   renameCategory(id: number, name: string): CategoryRow;
@@ -372,6 +374,22 @@ export function createApp(deps: Deps) {
     if (!id) return;
     deps.deleteRule(id);
     res.status(204).end();
+  });
+
+  // Cal rules: every sector Cal has used, with its mapping (category null = not mapped yet).
+  app.get("/api/cal-rules", (_req, res) => {
+    res.json(deps.listCalRules());
+  });
+  // PUT { sector, category: string | null }: set or change the mapping; null removes it.
+  app.put("/api/cal-rules", (req, res) => {
+    const sector = requireText(req.body?.sector, "sector", res);
+    if (!sector) return;
+    const category = req.body?.category;
+    if (category !== null && !(typeof category === "string" && category.trim())) {
+      res.status(400).json({ error: "category must be a category name or null" });
+      return;
+    }
+    res.json(deps.setCalRule(sector, category));
   });
 
   app.get("/api/categories", (_req, res) => {

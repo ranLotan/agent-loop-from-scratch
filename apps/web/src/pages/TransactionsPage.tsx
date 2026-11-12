@@ -10,7 +10,7 @@ const SOURCE_OPTIONS = [
   ["", "Any source"],
   ["manual", "Your edits"],
   ["rule", "Your rules"],
-  ["cal", "Cal's sector"],
+  ["cal", "Your Cal rules"],
   ["none", "Uncategorized"],
 ] as const;
 

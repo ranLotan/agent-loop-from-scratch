@@ -16,6 +16,7 @@ const tx = (id: string, merchant: string, sector?: string): Transaction => ({
   id, date: "2026-09-01", merchant, amount: 40, currency: "ILS", source: "xlsx", ...(sector && { sector }),
 });
 store.addCategories(["מסעדות", "אירועים", "שונות"]);
+store.setCalRule("מזון ומשקאות", "מסעדות");
 store.importTransactions("2026-09", [tx("a1", "Aroma", "מזון ומשקאות"), tx("a2", "Aroma"), tx("x1", "Mystery")], { source: "xlsx" });
 store.importTransactions("2026-08", [tx("old", "Aroma")], { source: "xlsx" });
 
@@ -127,4 +128,21 @@ test("pending charges: categorized, filtered by ledger month, replaced by the ne
   store.importScrape("2026-10", [], [charge("Kiosk", "2026-11-01")]);
   assert.deepEqual((await call("GET", "/api/pending")).body.map((p: { merchant: string }) => p.merchant), ["Kiosk"]);
   assert.equal((await call("GET", "/api/pending?month=oct")).status, 400);
+});
+
+test("Cal rules: GET lists sectors with their mapping, PUT sets and removes, bad bodies are refused", async () => {
+  const food = (rows: { sector: string; category: string | null }[]) => rows.find((r) => r.sector === "מזון ומשקאות");
+  assert.equal(food((await call("GET", "/api/cal-rules")).body)?.category, "מסעדות");
+
+  assert.equal((await call("PUT", "/api/cal-rules", { sector: "מזון ומשקאות", category: "שונות" })).status, 200);
+  assert.equal(food((await call("GET", "/api/cal-rules")).body)?.category, "שונות");
+
+  assert.equal((await call("PUT", "/api/cal-rules", { sector: "מזון ומשקאות", category: null })).status, 200);
+  assert.equal(food((await call("GET", "/api/cal-rules")).body)?.category, null);
+
+  assert.equal((await call("PUT", "/api/cal-rules", { category: "אירועים" })).status, 400, "no sector");
+  assert.equal((await call("PUT", "/api/cal-rules", { sector: "x" })).status, 400, "category missing (null must be explicit)");
+  assert.equal((await call("PUT", "/api/cal-rules", { sector: "x", category: "no such category" })).status, 400);
+
+  await call("PUT", "/api/cal-rules", { sector: "מזון ומשקאות", category: "מסעדות" }); // restore for any later test
 });

@@ -25,13 +25,13 @@ The agent only handles judgment: proposing categories for unknown merchants and 
 - All SQL lives in `src/db/`; everything else goes through `store.ts`. Schema changes are a new numbered file in `src/db/migrations/`: never edit a migration that has already run.
 
 ## Rules vs memory
-- **Rules** (SQLite: `categories` + `merchant_rules`): exact merchant → category mappings, applied by plain code. No agent involved. `npm run export` writes a gitignored `data/rules.json` backup; `data/rules.example.json` (fake merchants) seeds a fresh clone.
+- **Rules** (SQLite: `categories` + `merchant_rules`): exact merchant → category mappings, applied by plain code. No agent involved. **Cal rules** (`cal_rules`) map a Cal sector → my category, set by hand on the Rules page; they apply when no merchant rule matches. `npm run export` writes a gitignored `data/rules.json` backup; `data/rules.example.json` (fake merchants) seeds a fresh clone.
 - **Memory** (`data/memory.md`): fuzzy notes the agent reads for context (for example "PAYPAL charges are ambiguous, always ask", or past decisions). Stays a human-editable Markdown file.
 - Flow: a transaction with no matching rule goes to the agent. The agent proposes a category, I approve it, and the approval saves a new rule (or a memory note if the case is fuzzy). Over time the unknown pile shrinks.
 
 ## Pipeline
 1. `fetch`: scrape Cal for a month and save it to SQLite as an import batch. Support manual Excel/CSV export from Cal as a fallback input (CLI `import`, or the dashboard's Imports page).
-2. `categorize`: code only. Priority: my edit on that one transaction → my rule for the merchant → Cal's sector (ענף) from the statement → uncategorized.
+2. `categorize`: code only. Priority: my edit on that one transaction → my rule for the merchant → my Cal rule for the statement's sector (ענף) → uncategorized. Cal's raw sector name is never used as a category.
 3. `agent`: handle unmatched transactions and flag exceptions (above a threshold, new merchant, foreign currency, possible duplicate, new subscription).
 4. `approve`: approve or re-categorize each suggestion, in the CLI or on the dashboard's Review page, both through `applyAnswer()` → `decide()`. The outcome is a rule, this month only, or always by hand: the built-in `לסיווג ידני` bucket keeps a merchant like BIT away from the agent. (Todoist integration may come later.)
 5. `learn`: write approved results back to rules or memory.

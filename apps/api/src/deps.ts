@@ -23,6 +23,8 @@ export function realDeps(): Deps {
     setRule: store.setRule,
     updateRule: store.updateRule,
     deleteRule: store.deleteRule,
+    listCalRules: store.listCalRules,
+    setCalRule: store.setCalRule,
     listCategories: store.listCategories,
     addCategory: store.addCategory,
     renameCategory: store.renameCategory,

@@ -14,7 +14,8 @@ const tx = (id: string, merchant: string, over: Partial<Transaction> = {}): Tran
 const categorized = (month: string) => categorize(store.loadTransactions(month)!, store.loadRules());
 const byId = (month: string, id: string) => categorized(month).find((t) => t.id === id)!;
 
-store.addCategories(["מסעדות", "אירועים", "שונות"]);
+store.addCategories(["מסעדות", "אירועים", "שונות", "סופר"]);
+store.setCalRule("מזון ומשקאות", "סופר");
 store.importTransactions("2026-09", [tx("a1", "Aroma"), tx("a2", "Aroma"), tx("s1", "Shufersal")], { source: "xlsx" });
 store.importTransactions("2026-08", [tx("old", "Aroma", { date: "2026-08-03" })], { source: "xlsx" });
 
@@ -27,10 +28,10 @@ test("editing a category: it wins, it's labeled manual, and a re-import keeps it
   assert.equal(byId("2026-09", "a1").category, "אירועים", "a re-import never touches your edits");
 });
 
-test("clearing an edit (null) brings back Cal's sector", () => {
+test("clearing an edit (null) brings back the Cal rule for its sector", () => {
   store.editTransaction("s1", { category: "שונות" });
   store.editTransaction("s1", { category: null });
-  assert.deepEqual([byId("2026-09", "s1").category, byId("2026-09", "s1").categorySource], ["מזון ומשקאות", "cal"]);
+  assert.deepEqual([byId("2026-09", "s1").category, byId("2026-09", "s1").categorySource], ["סופר", "cal"]);
 });
 
 test("'make it a rule': every charge of the merchant follows, in every month", () => {
