@@ -2,7 +2,9 @@
 // a definition describes every month; exceptions change one month; nothing is stored ahead.
 
 import { normalizeMerchant } from "./categorize";
-import { round2 } from "./normalize";
+import { round2, shiftMonth } from "./normalize";
+
+export { shiftMonth }; // lives in normalize.ts since M6 (ledgerMonth needs it too)
 import type { Totals } from "./report";
 import type { Transaction } from "./types";
 
@@ -24,6 +26,11 @@ export interface RecurringDefinition {
   tolerance: number;
   /** The definition this one continues ("from this month on" splits a definition in two). */
   previousId: number | null;
+  /**
+   * M6, outside the card only: "auto" counts every month at the expected amount (salary);
+   * "confirm" counts a month only once you confirm its actual amount (the gas bill).
+   */
+  confirmMode: "auto" | "confirm";
 }
 
 /** One month that differs from its definition. */
@@ -33,13 +40,16 @@ export interface RecurringException {
   amount: number | null;
   skipped: boolean;
   note: string | null;
+  /** M6: when you confirmed this month's actual `amount` (confirm-mode items). Absent/null = not confirmed. */
+  confirmedAt?: string | null;
 }
 
 export type OccurrenceStatus =
   | "skipped" //   you said: not this month
   | "paid" //      by card: the matching charge was found on this month's statement
   | "not_seen" //  by card, but no matching charge on the statement
-  | "expected"; // outside the card: counted at its expected amount
+  | "expected" //  outside the card: counted at its expected amount (auto, or confirmed)
+  | "awaiting_confirmation"; // outside the card, confirm mode, not confirmed yet: NOT counted
 
 export interface Occurrence {
   definitionId: number;
@@ -59,13 +69,36 @@ export interface Occurrence {
   status: OccurrenceStatus;
   /** The card charge that paid it, when status is "paid". */
   transaction: { id: string; date: string; amount: number } | null;
+  confirmMode: RecurringDefinition["confirmMode"];
+  /**
+   * The amount to pre-fill when confirming: this month's own amount if you set one, else the most recent
+   * confirmed amount before this month (across "from this month on" splits), else the definition's.
+   * For an awaiting item, `expectedAmount` is this too ("~₪X expected").
+   */
+  suggestedAmount: number;
 }
 
-/** "2026-01" shifted by n months: shiftMonth("2026-01", -1) = "2025-12". */
-export function shiftMonth(month: string, n: number): string {
-  const [y, m] = month.split("-").map(Number);
-  const total = y * 12 + (m - 1) + n;
-  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
+/** The definition and every one it continues (previousId), newest first: one recurring item across its splits. */
+function chainIds(def: RecurringDefinition, definitions: RecurringDefinition[]): Set<number> {
+  const ids = new Set<number>();
+  for (let d: RecurringDefinition | undefined = def; d && !ids.has(d.id); d = definitions.find((x) => x.id === d!.previousId)) {
+    ids.add(d.id);
+  }
+  return ids;
+}
+
+/** The latest confirmed amount before `month` for this item, or null if it was never confirmed. */
+export function lastConfirmedAmount(
+  def: RecurringDefinition,
+  month: string,
+  definitions: RecurringDefinition[],
+  exceptions: RecurringException[],
+): number | null {
+  const ids = chainIds(def, definitions);
+  const confirmed = exceptions
+    .filter((e) => ids.has(e.definitionId) && e.month < month && e.confirmedAt && e.amount !== null)
+    .sort((a, b) => b.month.localeCompare(a.month));
+  return confirmed[0]?.amount ?? null;
 }
 
 export function isActive(def: RecurringDefinition, month: string): boolean {
@@ -98,7 +131,9 @@ export function occurrencesFor(
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((def) => {
       const exception = exceptions.find((e) => e.definitionId === def.id && e.month === month);
-      const expectedAmount = exception?.amount ?? def.amount;
+      const confirming = def.confirmMode === "confirm" && !def.merchant;
+      const suggestedAmount = exception?.amount ?? (confirming ? lastConfirmedAmount(def, month, definitions, exceptions) : null) ?? def.amount;
+      const expectedAmount = suggestedAmount;
       const base = {
         definitionId: def.id,
         name: def.name,
@@ -112,8 +147,11 @@ export function occurrencesFor(
         note: exception?.note ?? null,
         paidBy: def.merchant ? ("card" as const) : ("outside" as const),
         transaction: null,
+        confirmMode: def.confirmMode,
+        suggestedAmount,
       };
       if (exception?.skipped) return { ...base, status: "skipped" as const };
+      if (confirming && !exception?.confirmedAt) return { ...base, status: "awaiting_confirmation" as const };
       if (!def.merchant) return { ...base, status: "expected" as const };
 
       const merchant = normalizeMerchant(def.merchant);
@@ -142,6 +180,8 @@ export interface RecurringSummary {
   outsideExpenses: Totals;
   paidByCard: number;
   notSeen: number;
+  /** Confirm-mode items not confirmed yet (M6): not in the totals above. */
+  awaiting: number;
 }
 
 /** Card-paid items are never added here: their charge is already part of the card statement's totals. */
@@ -158,6 +198,7 @@ export function summarizeRecurring(occurrences: Occurrence[]): RecurringSummary 
     outsideExpenses,
     paidByCard: occurrences.filter((o) => o.status === "paid").length,
     notSeen: occurrences.filter((o) => o.status === "not_seen").length,
+    awaiting: occurrences.filter((o) => o.status === "awaiting_confirmation").length,
   };
 }
 

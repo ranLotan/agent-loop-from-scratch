@@ -7,7 +7,7 @@ import { isMonth } from "./normalize";
 import { totalsByCurrency } from "./report";
 import { mapScrapedAccounts, scrapeCal } from "./scraper";
 import { parseStatementBytes, type ParsedStatement } from "./statement-import";
-import { importTransactions, loadTransactions, rawPath, saveRaw } from "./store";
+import { importScrape, importTransactions, loadTransactions, rawPath, saveRaw } from "./store";
 import type { Transaction } from "./types";
 
 export interface StatementImport extends ImportResult {
@@ -72,10 +72,10 @@ export async function fetchMonth(month: string, opts: { showBrowser?: boolean } 
     failureScreenshotPath: rawPath("failure.png"),
   });
   const rawFile = saveRaw(`${month}.json`, accounts);
-  const { transactions, pending, otherMonths } = mapScrapedAccounts(accounts, month);
+  const { transactions, pendingCharges, pending, otherMonths } = mapScrapedAccounts(accounts, month);
 
   const previous = loadTransactions(month);
-  const result = importTransactions(month, transactions, { source: "scraper" });
+  const result = importScrape(month, transactions, pendingCharges);
 
   let comparison: FetchImport["comparison"] = null;
   if (previous) {

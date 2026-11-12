@@ -22,12 +22,23 @@ const internet = store.createRecurring({
   name: "Internet", kind: "expense", amount: 120, startMonth: "2026-01", category: "תקשורת ומחשבים", merchant: "  bezeq   online ",
 });
 
+test("card-paid items match by ledger month: a charge on the 28th, billed next month, pays its own month (M6)", () => {
+  store.importTransactions(
+    "2027-02",
+    [{ id: "net-jan", date: "2027-01-28", merchant: "Bezeq Online", amount: 119.9, currency: "ILS", source: "scraper" }],
+    { source: "scraper" },
+  );
+  const internetIn = (month: string) => store.recurringMonth(month).occurrences.find((o) => o.name === "Internet")!;
+  assert.deepEqual([internetIn("2027-01").status, internetIn("2027-01").transaction?.id], ["paid", "net-jan"]);
+  assert.notEqual(internetIn("2027-02").status, "paid", "February's statement doesn't pay February's internet");
+});
+
 test("a month: card-paid items match their charge; outside items count at their expected amount", () => {
   const { occurrences, summary } = store.recurringMonth("2026-09");
   const byName = Object.fromEntries(occurrences.map((o) => [o.name, o]));
   assert.deepEqual([byName.Internet.status, byName.Internet.transaction?.id], ["paid", "net"]);
   assert.deepEqual([byName.Salary.status, byName.Salary.expectedDate], ["expected", "2026-09-10"]);
-  assert.deepEqual(summary, { income: { ILS: 18000 }, outsideExpenses: { ILS: 6500 }, paidByCard: 1, notSeen: 0 });
+  assert.deepEqual(summary, { income: { ILS: 18000 }, outsideExpenses: { ILS: 6500 }, paidByCard: 1, notSeen: 0, awaiting: 0 });
   assert.equal(store.getRecurring(internet.id).merchant, "bezeq online", "spaces cleaned, matching ignores case");
 });
 

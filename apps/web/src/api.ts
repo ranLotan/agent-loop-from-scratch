@@ -12,6 +12,9 @@ import type { CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import type { Summary } from "../../../src/report";
 import type { CategorizedTransaction } from "../../../src/types";
+import type { ManualEntry } from "../../../src/db/manual";
+import type { LedgerEntry, LedgerSummary, PieSlice } from "../../../src/ledger";
+import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
 
 export type { FetchImport, ImportBatch, Job, StatementImport };
 
@@ -40,13 +43,19 @@ const json = (method: string, body?: unknown): RequestInit => ({
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
-/** A transaction as the search and edit routes return it: categorized, with its billing month. */
-export type TransactionRow = CategorizedTransaction & { billingMonth: string };
+/** A transaction as the search and edit routes return it: categorized, with its billing and ledger months. */
+export type TransactionRow = CategorizedTransaction & { billingMonth: string; ledgerMonth: string };
+/** A charge not billed yet (M6). Read-only: the next scrape replaces it. */
+export type PendingRow = CategorizedTransaction & { ledgerMonth: string; pending: true; scrapedAt: string };
 export type { CategoryRow, RuleRow };
+
+/** Which month the month filter means: the purchase month (ledger) or the Cal statement it was billed on. */
+export type MonthBy = "ledger" | "billing";
 
 export interface TransactionFilters {
   from?: string;
   to?: string;
+  by?: MonthBy;
   q?: string;
   category?: string;
   source?: string;
@@ -94,6 +103,7 @@ export const api = {
   job: (id: string) => request<ScrapeJob>(`/jobs/${id}`),
 
   searchTransactions: (filters: TransactionFilters) => request<TransactionRow[]>(`/transactions${queryOf(filters)}`),
+  pending: (month?: string) => request<PendingRow[]>(`/pending${month ? `?month=${month}` : ""}`),
   editTransaction: (id: string, edit: TransactionEdit) =>
     request<TransactionRow>(`/transactions/${encodeURIComponent(id)}`, json("PATCH", edit)),
 
@@ -125,6 +135,18 @@ export const api = {
   /** One month only. { amount: null, skipped: false, note: null } = back to normal. */
   setRecurringMonth: (id: number, month: string, change: { amount?: number | null; skipped?: boolean; note?: string | null }) =>
     request<unknown>(`/recurring/${id}/months/${month}`, json("PUT", change)),
+
+  // M6: the ledger. These return finished numbers; the pages only display them.
+  ledger: (month: string) => request<MonthLedger>(`/months/${month}/ledger`),
+  trend: (end: string, n = 6) => request<TrendPoint[]>(`/ledger/trend?end=${end}&n=${n}`),
+  status: (month: string) => request<MonthStatus>(`/months/${month}/status`),
+  confirmMonth: (id: number, month: string, amount: number) =>
+    request<unknown>(`/recurring/${id}/occurrences/${month}/confirm`, json("POST", { amount })),
+  unconfirmMonth: (id: number, month: string) => request<unknown>(`/recurring/${id}/occurrences/${month}/confirm`, json("DELETE")),
+  manualEntries: (month: string) => request<ManualEntry[]>(`/manual-entries?month=${month}`),
+  createManualEntry: (input: ManualEntryInput) => request<ManualEntry>("/manual-entries", json("POST", input)),
+  updateManualEntry: (id: number, edit: Partial<ManualEntryInput>) => request<ManualEntry>(`/manual-entries/${id}`, json("PATCH", edit)),
+  deleteManualEntry: (id: number) => request<void>(`/manual-entries/${id}`, json("DELETE")),
 };
 
 export type { Occurrence, RecurringDefinition, RecurringSummary };
@@ -138,7 +160,12 @@ export type RecurringInput = Pick<RecurringDefinition, "name" | "kind" | "amount
   category?: string | null;
   merchant?: string | null;
   dayOfMonth?: number | null;
+  confirmMode?: RecurringDefinition["confirmMode"];
 };
+
+export type { LedgerEntry, LedgerSummary, ManualEntry, MonthLedger, MonthStatus, PieSlice, TrendPoint };
+/** What the one-time form sends. */
+export type ManualEntryInput = Pick<ManualEntry, "date" | "name" | "kind" | "amount"> & { category?: string | null; note?: string | null };
 
 /** A month's newest agent run, its proposals and flags. */
 export interface Review {

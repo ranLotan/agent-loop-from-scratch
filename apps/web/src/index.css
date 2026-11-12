@@ -198,3 +198,137 @@ form,
 .badge-high {
   font-weight: 600;
 }
+
+/* ---------- M6 dashboard: charts in plain SVG ----------
+   Categorical colors from the dataviz reference palette, validated (scripts/validate_palette.js) in both
+   modes: light needs visible labels for 3 of the 6 (they're under 3:1), which the legend table provides.
+   "Other" is neutral gray, never a 7th hue. Dark mode gets its own steps, not an automatic flip. */
+:root {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6; /* 7 categories show 7 slices (an Other of one would just hide a name) */
+  --series-other: #898781;
+  --net-good: #006300;
+  --net-bad: #d03b3b;
+  --grid: #e1e0d9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --net-good: #0ca30c;
+    --grid: #2c2c2a;
+  }
+}
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 12px 0;
+}
+
+.status-step {
+  color: inherit;
+}
+
+.status-step.done {
+  opacity: 0.7;
+}
+
+.status-step.todo {
+  font-weight: 600;
+}
+
+.hero {
+  margin: 16px 0;
+  font-size: 1.1rem;
+}
+
+.hero-net {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.hero-net.good {
+  color: var(--net-good);
+}
+
+.hero-net.bad {
+  color: var(--net-bad);
+}
+
+.chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 32px;
+}
+
+.pie {
+  width: 220px;
+  max-width: 100%;
+  flex: none;
+}
+
+/* The 2px gap between slices is a stroke in the page's own background color (Canvas follows light/dark). */
+.pie path,
+.pie circle {
+  stroke: Canvas;
+  stroke-width: 2;
+}
+
+.pie .clickable {
+  cursor: pointer;
+}
+
+.pie .dimmed {
+  opacity: 0.35;
+}
+
+.legend {
+  flex: 1 1 280px;
+}
+
+.legend .hovered {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-inline-end: 6px;
+  vertical-align: baseline;
+}
+
+.trend {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+}
+
+.trend text {
+  fill: currentColor;
+  font-size: 11px;
+}
+
+.trend .axis {
+  stroke: var(--grid);
+}
+
+.trend rect.dimmed {
+  opacity: 0.35;
+}

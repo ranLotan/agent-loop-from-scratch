@@ -12,6 +12,7 @@ Each milestone has its own file with objectives, scope, deliverables, dependenci
 | 3 | [Transaction management](milestones/milestone-3.md) | ✅ Done | Search/filter, edit category and description, manual source, rules and categories CRUD |
 | 4 | [Agent integration](milestones/milestone-4.md) | ✅ Done | Run the agent from the UI, review proposals and flags, approve/reject through the same `decide()` |
 | 5 | [Recurring transactions](milestones/milestone-5.md) | ✅ Done | Recurring income/expenses, expected vs actual, edit one occurrence or the definition |
+| 6 | [Monthly balance](milestones/milestone-6.md) | ✅ Done | Purchase-month ledger, recurring confirm modes, one-offs, Net + pie + trend on the dashboard |
 
 ## Sequencing notes
 - M1 deliberately adds a **tiny read-only API** that reads the existing JSON through `src/store.ts`. React learns real data fetching from day one, and M2 swaps the storage behind the same endpoints.

@@ -45,7 +45,7 @@ test("create, list and see a month: income, outside expenses, and a card-paid it
   assert.equal((await call("GET", "/api/recurring")).body.length, 3);
 
   const { body } = await call("GET", "/api/months/2026-09/recurring");
-  assert.deepEqual(body.summary, { income: { ILS: 18000 }, outsideExpenses: { ILS: 6500 }, paidByCard: 1, notSeen: 0 });
+  assert.deepEqual(body.summary, { income: { ILS: 18000 }, outsideExpenses: { ILS: 6500 }, paidByCard: 1, notSeen: 0, awaiting: 0 });
   assert.equal(body.occurrences.find((o: { name: string }) => o.name === "Internet").transaction.id, "net");
 });
 
@@ -72,4 +72,36 @@ test("one month vs from this month on", async () => {
   assert.equal((await call("GET", "/api/months/2026-10/recurring")).body.summary.outsideExpenses.ILS, 7000 + 200);
   assert.equal((await call("POST", `/api/recurring/${rent.id}/change-from`, { month: "nope" })).status, 400);
   assert.equal((await call("DELETE", `/api/recurring/${rent.id}`)).status, 204);
+});
+
+test("M6: confirm a month through the API, and take it back", async () => {
+  const gas = (await call("POST", "/api/recurring", { name: "Gas", kind: "expense", amount: 200, startMonth: "2026-01", confirmMode: "confirm" })).body;
+  assert.equal(gas.confirmMode, "confirm");
+  const gasIn = async (month: string) =>
+    (await call("GET", `/api/months/${month}/recurring`)).body.occurrences.find((o: { definitionId: number }) => o.definitionId === gas.id);
+
+  assert.equal((await gasIn("2026-09")).status, "awaiting_confirmation");
+  const ok = await call("POST", `/api/recurring/${gas.id}/occurrences/2026-09/confirm`, { amount: 243.5 });
+  assert.equal(ok.status, 200);
+  assert.deepEqual([(await gasIn("2026-09")).status, (await gasIn("2026-10")).suggestedAmount], ["expected", 243.5]);
+
+  assert.equal((await call("POST", `/api/recurring/${gas.id}/occurrences/2026-09/confirm`, { amount: "243" })).status, 400);
+  assert.equal((await call("POST", `/api/recurring/${gas.id}/occurrences/sept/confirm`, { amount: 1 })).status, 400);
+  assert.equal((await call("POST", `/api/recurring/99999/occurrences/2026-09/confirm`, { amount: 1 })).status, 404);
+
+  assert.equal((await call("DELETE", `/api/recurring/${gas.id}/occurrences/2026-09/confirm`)).status, 200);
+  assert.equal((await gasIn("2026-09")).status, "awaiting_confirmation");
+});
+
+test("M6: one-time entries CRUD, with validation in the core", async () => {
+  const created = await call("POST", "/api/manual-entries", { date: "2026-09-14", name: "Gift", kind: "income", amount: 500, id: 77 });
+  assert.equal(created.status, 201);
+  assert.notEqual(created.body.id, 77, "the client can't choose the id");
+  assert.deepEqual((await call("GET", "/api/manual-entries?month=2026-09")).body.map((e: { name: string }) => e.name), ["Gift"]);
+
+  assert.equal((await call("PATCH", `/api/manual-entries/${created.body.id}`, { amount: 650 })).body.amount, 650);
+  assert.equal((await call("POST", "/api/manual-entries", { date: "soon", name: "X", kind: "expense", amount: 1 })).status, 400);
+  assert.equal((await call("GET", "/api/manual-entries?month=09")).status, 400);
+  assert.equal((await call("DELETE", `/api/manual-entries/${created.body.id}`)).status, 204);
+  assert.equal((await call("DELETE", `/api/manual-entries/${created.body.id}`)).status, 404);
 });

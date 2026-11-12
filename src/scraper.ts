@@ -50,21 +50,22 @@ function mapTxn(t: ScrapedTxn, card: string): Omit<Transaction, "id"> {
 }
 
 /**
- * Pure mapping, no network: keeps completed transactions billed in `month`.
- * A statement month is defined by the billing date (processedDate), same as the xlsx export.
+ * Pure mapping, no network: keeps completed transactions billed in `month`, and every pending charge
+ * (any month: they replace the whole pending list). A statement month is defined by the billing date
+ * (processedDate), same as the xlsx export. A pending row's processedDate is not a real billing date.
  */
 export function mapScrapedAccounts(accounts: Account[], month: string) {
   const kept: Omit<Transaction, "id">[] = [];
-  let pending = 0;
+  const pendingCharges: Omit<Transaction, "id">[] = [];
   let otherMonths = 0;
   for (const account of accounts) {
     for (const t of account.txns) {
-      if (t.status === "pending") pending++;
+      if (t.status === "pending") pendingCharges.push(mapTxn(t, account.accountNumber));
       else if (israelDate(t.processedDate).slice(0, 7) !== month) otherMonths++;
       else kept.push(mapTxn(t, account.accountNumber));
     }
   }
-  return { transactions: assignIds(kept, month), pending, otherMonths };
+  return { transactions: assignIds(kept, month), pendingCharges, pending: pendingCharges.length, otherMonths };
 }
 
 /** Logs in to Cal with a headless browser and returns every card's transactions from `month` onward. */

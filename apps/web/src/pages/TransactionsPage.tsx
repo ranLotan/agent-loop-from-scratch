@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router";
-import { api } from "../api";
+import { api, type MonthBy } from "../api";
 import { EditTransactionForm } from "../components/EditTransactionForm";
 import { TransactionsTable } from "../components/TransactionsTable";
 import { useApi } from "../hooks/useApi";
@@ -23,6 +23,9 @@ export function TransactionsPage() {
   const category = searchParams.get("category") ?? "";
   const source = searchParams.get("source") ?? "";
   const allMonths = searchParams.get("all") === "1";
+  // M6: the month means the purchase month unless the URL says ?by=billing (for checking a Cal statement).
+  // Derived from the URL on every render, like a getter over ActivatedRoute in Angular: no state to keep in sync.
+  const by: MonthBy = searchParams.get("by") === "billing" ? "billing" : "ledger";
   const filtered = Boolean(q || category || source);
   /** Back to this month, unfiltered (keeps ?month= and ?all=). */
   function clearFilters() {
@@ -50,16 +53,21 @@ export function TransactionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const range = allMonths ? {} : { from: month, to: month };
   const { data, error, loading } = useApi(
-    () => api.searchTransactions({ ...range, q, category, source }),
-    [month, allMonths, q, category, source, reloadKey],
+    () => api.searchTransactions({ ...range, by, q, category, source }),
+    [month, allMonths, by, q, category, source, reloadKey],
   );
+  // Charges not billed yet belong to a purchase month only, so they're shown for one ledger month, unfiltered.
+  const showPending = by === "ledger" && !allMonths && !filtered;
+  const pending = useApi(() => (showPending ? api.pending(month) : Promise.resolve([])), [month, showPending]);
   const categories = useApi(() => api.categories(), [reloadKey]);
   const categoryNames = categories.data?.map((c) => c.name) ?? [];
   const editing = data?.find((t) => t.id === editingId);
 
   return (
     <section>
-      <h1>Transactions{allMonths ? ", all months" : `, ${month}`}</h1>
+      <h1>
+        Transactions{allMonths ? ", all months" : by === "ledger" ? `, bought in ${month}` : `, ${month} statement`}
+      </h1>
 
       {/* Always rendered, even while loading: if these unmounted, the text box would lose focus on every key. */}
       <div className="filters">
@@ -84,6 +92,11 @@ export function TransactionsPage() {
               {label}
             </option>
           ))}
+        </select>
+        {/* The default (ledger) is left out of the URL, like the other filters' empty values. */}
+        <select value={by} onChange={(e) => setFilter("by", e.target.value === "billing" ? "billing" : "")} aria-label="Month by">
+          <option value="ledger">By purchase month</option>
+          <option value="billing">By Cal statement</option>
         </select>
         <label>
           <input type="checkbox" checked={allMonths} onChange={(e) => setFilter("all", e.target.checked ? "1" : "")} /> All
@@ -110,7 +123,8 @@ export function TransactionsPage() {
           )}
           <TransactionsTable
             transactions={data}
-            showMonth={allMonths}
+            monthColumn={allMonths ? (by === "ledger" ? "ledgerMonth" : "billingMonth") : undefined}
+            showBilled={by === "ledger"}
             editingId={editingId}
             onEdit={setEditingId}
             editor={
@@ -130,6 +144,17 @@ export function TransactionsPage() {
               )
             }
           />
+        </>
+      )}
+
+      {showPending && pending.data && pending.data.length > 0 && (
+        <>
+          <h2>Not billed yet</h2>
+          <p className="muted">
+            {pending.data.length} pending charge{pending.data.length === 1 ? "" : "s"}, as of the scrape on{" "}
+            {pending.data[0].scrapedAt.slice(0, 10)}. They're replaced by the next scrape, so they can't be edited.
+          </p>
+          <TransactionsTable transactions={pending.data} showBilled />
         </>
       )}
     </section>

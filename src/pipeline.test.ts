@@ -125,8 +125,13 @@ test("scraper mapping: sign, Israel dates, billing month, installments, same ids
       ],
     },
   ];
-  const { transactions, pending, otherMonths } = mapScrapedAccounts(accounts as never, "2026-09");
+  const { transactions, pendingCharges, pending, otherMonths } = mapScrapedAccounts(accounts as never, "2026-09");
   assert.equal(pending, 1);
+  assert.deepEqual(
+    [pendingCharges[0].date, pendingCharges[0].merchant, pendingCharges[0].amount, pendingCharges[0].card],
+    ["2026-09-08", "שוק הכיכר", 100, "7187"],
+    "pending charges are kept now (M6), mapped like billed ones",
+  );
   assert.equal(otherMonths, 1);
   const [shuk, euro, flight] = transactions;
   assert.deepEqual([shuk.date, shuk.amount, shuk.currency, shuk.type, shuk.card], ["2026-09-08", 100, "ILS", "רגילה", "7187"]);

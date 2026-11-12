@@ -5,6 +5,7 @@ import { answerFlag, applyAnswer } from "../../../src/agent/apply";
 import { getClient, MODEL } from "../../../src/agent/client";
 import { runAgent } from "../../../src/agent/service";
 import { fetchMonth, importStatement } from "../../../src/imports";
+import { ledgerTrend, monthLedger, monthStatus } from "../../../src/ledger-service";
 import * as store from "../../../src/store";
 import type { Deps } from "./app";
 
@@ -40,5 +41,15 @@ export function realDeps(): Deps {
     deleteRecurring: store.deleteRecurring,
     setRecurringMonth: store.setRecurringMonth,
     recurringMonth: store.recurringMonth,
+    listPending: store.listPending,
+    confirmRecurringMonth: store.confirmRecurringMonth,
+    unconfirmRecurringMonth: store.unconfirmRecurringMonth,
+    listManualEntries: store.listManualEntries,
+    createManualEntry: store.createManualEntry,
+    updateManualEntry: store.updateManualEntry,
+    deleteManualEntry: store.deleteManualEntry,
+    monthLedger,
+    ledgerTrend,
+    monthStatus,
   };
 }

@@ -17,9 +17,9 @@ export function Layout() {
           <NavLink to={{ pathname: "/", search }} end>
             Dashboard
           </NavLink>
-          <NavLink to={{ pathname: "/transactions", search }}>Transactions</NavLink>
+          <NavLink to={{ pathname: "/transactions", search }}>Card transactions</NavLink>
+          <NavLink to={{ pathname: "/manual", search }}>Manual transactions</NavLink>
           <NavLink to={{ pathname: "/review", search }}>Review</NavLink>
-          <NavLink to={{ pathname: "/recurring", search }}>Recurring</NavLink>
           <NavLink to={{ pathname: "/rules", search }}>Rules</NavLink>
           <NavLink to={{ pathname: "/imports", search }}>Imports</NavLink>
         </nav>

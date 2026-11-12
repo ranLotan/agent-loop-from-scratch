@@ -107,3 +107,24 @@ test("edits from another website are refused", async () => {
   const { status } = await call("PATCH", "/api/transactions/x1", { category: "שונות" }, { origin: "https://evil.example" });
   assert.equal(status, 403);
 });
+
+test("search by ledger month (M6): a row billed in August counts in September, its purchase month", async () => {
+  // "old" was imported into the 2026-08 statement but bought on 2026-09-01.
+  const byLedger = (await call("GET", "/api/transactions?from=2026-09&to=2026-09&by=ledger")).body;
+  assert.deepEqual(ids(byLedger), ["old", "a1", "a2", "x1"]);
+  assert.deepEqual([byLedger[0].billingMonth, byLedger[0].ledgerMonth], ["2026-08", "2026-09"]);
+  assert.deepEqual(ids((await call("GET", "/api/transactions?from=2026-09&to=2026-09&by=billing")).body), ["a1", "a2", "x1"]);
+  assert.equal((await call("GET", "/api/transactions?by=purchase")).status, 400);
+});
+
+test("pending charges: categorized, filtered by ledger month, replaced by the next scrape", async () => {
+  const charge = (merchant: string, date: string) => ({ date, merchant, amount: 25, currency: "ILS", source: "scraper" as const });
+  store.importScrape("2026-10", [], [charge("Aroma", "2026-10-05"), charge("Kiosk", "2026-11-01")]);
+  const october = (await call("GET", "/api/pending?month=2026-10")).body;
+  assert.deepEqual(october.map((p: { merchant: string; pending: boolean }) => [p.merchant, p.pending]), [["Aroma", true]]);
+  assert.ok("category" in october[0], "categorized by the same core as billed rows");
+
+  store.importScrape("2026-10", [], [charge("Kiosk", "2026-11-01")]);
+  assert.deepEqual((await call("GET", "/api/pending")).body.map((p: { merchant: string }) => p.merchant), ["Kiosk"]);
+  assert.equal((await call("GET", "/api/pending?month=oct")).status, 400);
+});

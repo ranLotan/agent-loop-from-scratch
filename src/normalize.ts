@@ -19,6 +19,13 @@ export const round2 = (n: number) => Math.round(n * 100) / 100;
 /** A statement month like "2026-09". */
 export const isMonth = (s: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 
+/** "2026-01" shifted by n months: shiftMonth("2026-01", -1) = "2025-12". */
+export function shiftMonth(month: string, n: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
+}
+
 /** Same date+merchant+amount twice is legit (two coffees), so repeats are numbered. */
 export function assignIds(transactions: Omit<Transaction, "id">[], billingMonth: string): Transaction[] {
   const seen = new Map<string, number>();

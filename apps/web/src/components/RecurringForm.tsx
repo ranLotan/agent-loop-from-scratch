@@ -22,6 +22,9 @@ export function RecurringForm({ initial, categories, submitLabel, askStartMonth,
   const [merchant, setMerchant] = useState(initial?.merchant ?? "");
   const [day, setDay] = useState(initial?.dayOfMonth ? String(initial.dayOfMonth) : "");
   const [startMonth, setStartMonth] = useState(askStartMonth ?? "");
+  const [confirmMode, setConfirmMode] = useState<RecurringDefinition["confirmMode"]>(initial?.confirmMode ?? "auto");
+  // Derived, not stored: a card-paid item is confirmed by its charge, so the choice only exists without a merchant.
+  const paidByCard = merchant.trim() !== "";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +39,7 @@ export function RecurringForm({ initial, categories, submitLabel, askStartMonth,
       category: category || null,
       merchant: merchant.trim() || null,
       dayOfMonth: day ? Number(day) : null,
+      confirmMode: paidByCard ? "auto" : confirmMode,
       ...(askStartMonth !== undefined && { startMonth }),
     };
     onSubmit(input)
@@ -59,6 +63,12 @@ export function RecurringForm({ initial, categories, submitLabel, askStartMonth,
           </option>
         ))}
       </select>
+      {!paidByCard && (
+        <select value={confirmMode} onChange={(e) => setConfirmMode(e.target.value === "confirm" ? "confirm" : "auto")} aria-label="Counts">
+          <option value="auto">Counts automatically</option>
+          <option value="confirm">Counts after I confirm the amount</option>
+        </select>
+      )}
       <input
         value={merchant}
         onChange={(e) => setMerchant(e.target.value)}

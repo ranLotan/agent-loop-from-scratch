@@ -7,6 +7,8 @@ import type { Answer } from "./agent/review";
 import * as importsDb from "./db/imports";
 import type { BatchInfo, ImportBatch, ImportResult } from "./db/imports";
 import { inTransaction, NotFoundError, openDb, ValidationError } from "./db/index";
+import * as manualDb from "./db/manual";
+import * as pendingDb from "./db/pending";
 import * as proposalsDb from "./db/proposals";
 import { loadProposalsFile, saveProposalsFile, type RunMeta } from "./db/proposals";
 import * as recurringDb from "./db/recurring";
@@ -24,7 +26,11 @@ export const DATA_DIR = fileURLToPath(new URL("../data", import.meta.url));
 let database: DatabaseSync | undefined;
 /** Opened on first use, so importing this module has no side effects. */
 function db(): DatabaseSync {
-  return (database ??= openDb());
+  if (!database) {
+    database = openDb();
+    transactionsDb.backfillLedgerMonths(database); // rows from before migration 005; no-op afterwards
+  }
+  return database;
 }
 const dbLabel = () => process.env.DB_PATH ?? "data/app.db";
 
@@ -42,6 +48,15 @@ function writeFile(path: string, content: string) {
 export function importTransactions(month: string, transactions: Transaction[], info: BatchInfo): ImportResult {
   return importsDb.importBatch(db(), month, transactions, info);
 }
+
+/** A scrape: the billing month's rows, plus the pending charges, which replace the previous list. */
+export function importScrape(month: string, transactions: Transaction[], pending: Omit<Transaction, "id">[]): ImportResult {
+  return importsDb.importScrape(db(), month, transactions, pending);
+}
+
+export type { PendingCharge } from "./db/pending";
+/** Pending (not yet billed) charges from the latest scrape; one ledger month's when `month` is given. */
+export const listPending = (month?: string) => pendingDb.listPending(db(), month);
 
 /** Every import, newest first. */
 export function listImports(): ImportBatch[] {
@@ -200,8 +215,23 @@ export const changeRecurringFrom = (id: number, month: string, changes: Definiti
 export const deleteRecurring = (id: number) => recurringDb.deleteDefinition(db(), id);
 export const setRecurringMonth = (id: number, month: string, change: recurringDb.MonthChange) => recurringDb.setMonth(db(), id, month, change);
 
-/** A month's recurring items, matched against that month's card statement. */
+/**
+ * A month's recurring items, matched against the card charges that count in that month (ledger month, M6).
+ * By billing month, a charge on the 28th could pay the wrong month's item.
+ */
 export function recurringMonth(month: string): { occurrences: Occurrence[]; summary: RecurringSummary } {
-  const occurrences = occurrencesFor(month, recurringDb.listDefinitions(db()), recurringDb.listExceptions(db()), loadTransactions(month) ?? []);
+  const charges = transactionsDb.searchTransactions(db(), { from: month, to: month, by: "ledger" });
+  const occurrences = occurrencesFor(month, recurringDb.listDefinitions(db()), recurringDb.listExceptions(db()), charges);
   return { occurrences, summary: summarizeRecurring(occurrences) };
 }
+
+// ---------- Confirm mode and one-time entries (M6) ----------
+
+export const confirmRecurringMonth = (id: number, month: string, amount: number) => recurringDb.confirmMonth(db(), id, month, amount);
+export const unconfirmRecurringMonth = (id: number, month: string) => recurringDb.unconfirmMonth(db(), id, month);
+
+export type { ManualEntry, NewManualEntry } from "./db/manual";
+export const listManualEntries = (month?: string) => manualDb.listManualEntries(db(), month);
+export const createManualEntry = (input: manualDb.NewManualEntry) => manualDb.createManualEntry(db(), input);
+export const updateManualEntry = (id: number, edit: Partial<manualDb.NewManualEntry>) => manualDb.updateManualEntry(db(), id, edit);
+export const deleteManualEntry = (id: number) => manualDb.deleteManualEntry(db(), id);

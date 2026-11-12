@@ -13,6 +13,9 @@ import type { OverrideChange, StoredTransaction, TransactionSearch } from "../..
 import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
 import type { Answer } from "../../../src/agent/review";
 import type { AgentRunResult } from "../../../src/agent/service";
+import type { ManualEntry, NewManualEntry } from "../../../src/db/manual";
+import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
+import type { PendingCharge } from "../../../src/db/pending";
 import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
 import type { DefinitionEdit, MonthChange, NewDefinition } from "../../../src/db/recurring";
 import type { FetchImport, StatementImport } from "../../../src/imports";
@@ -56,13 +59,35 @@ export interface Deps {
   deleteRecurring(id: number): void;
   setRecurringMonth(id: number, month: string, change: MonthChange): RecurringException | null;
   recurringMonth(month: string): { occurrences: Occurrence[]; summary: RecurringSummary };
+  // M6: the ledger
+  listPending(month?: string): PendingCharge[];
+  confirmRecurringMonth(id: number, month: string, amount: number): RecurringException;
+  unconfirmRecurringMonth(id: number, month: string): RecurringException | null;
+  listManualEntries(month?: string): ManualEntry[];
+  createManualEntry(input: NewManualEntry): ManualEntry;
+  updateManualEntry(id: number, edit: Partial<NewManualEntry>): ManualEntry;
+  deleteManualEntry(id: number): void;
+  monthLedger(month: string): MonthLedger;
+  ledgerTrend(endMonth: string, n: number): TrendPoint[];
+  monthStatus(month: string): MonthStatus;
 }
 
 /** Only the fields a client may set on a recurring item: never id or previousId. Types are checked in the core. */
-const RECURRING_FIELDS = ["name", "kind", "amount", "currency", "category", "dayOfMonth", "startMonth", "endMonth", "merchant", "tolerance"] as const;
+const RECURRING_FIELDS = ["name", "kind", "amount", "currency", "category", "dayOfMonth", "startMonth", "endMonth", "merchant", "tolerance", "confirmMode"] as const;
 function recurringFields(body: unknown): Record<string, unknown> {
+  return pick(body, RECURRING_FIELDS);
+}
+
+/** Only the fields a client may set on a one-time entry (M6): never id. Types are checked in the core. */
+const MANUAL_FIELDS = ["date", "name", "kind", "amount", "currency", "category", "note"] as const;
+function manualFields(body: unknown): Record<string, unknown> {
+  return pick(body, MANUAL_FIELDS);
+}
+
+/** An allowlist of body fields; "" becomes null (an emptied form field). */
+function pick(body: unknown, fields: readonly string[]): Record<string, unknown> {
   const b = (body ?? {}) as Record<string, unknown>;
-  return Object.fromEntries(RECURRING_FIELDS.filter((k) => k in b).map((k) => [k, b[k] === "" ? null : b[k]]));
+  return Object.fromEntries(fields.filter((k) => k in b).map((k) => [k, b[k] === "" ? null : b[k]]));
 }
 
 /** The answers decide() understands, checked before anything is written. */
@@ -252,24 +277,42 @@ export function createApp(deps: Deps) {
 
   // ---------- M3: search and edit ----------
 
-  // GET /api/transactions?from=&to=&q=&category=&source=&currency=   (every filter optional)
+  // GET /api/transactions?from=&to=&by=&q=&category=&source=&currency=   (every filter optional)
+  // by = "billing" (default: from/to are statement months) or "ledger" (the month a charge counts in, M6).
   app.get("/api/transactions", (req, res) => {
-    const { from, to, q, category, source, currency } = req.query;
+    const { from, to, by, q, category, source, currency } = req.query;
     for (const value of [from, to]) if (value !== undefined && value !== "" && !requireMonth(value, res)) return;
     if (source !== undefined && (typeof source !== "string" || !SOURCES.has(source))) {
       res.status(400).json({ error: "source must be one of manual, agent, rule, cal, none" });
+      return;
+    }
+    if (by !== undefined && by !== "" && by !== "billing" && by !== "ledger") {
+      res.status(400).json({ error: "by must be billing or ledger" });
       return;
     }
     const text = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
     const rules = deps.loadRules();
     validateRules(rules);
     // SQL narrows by month and text; the category is computed by categorize(), so it's filtered after it.
-    const rows = categorize(deps.searchTransactions({ from: text(from), to: text(to), q: text(q), currency: text(currency) }), rules);
+    const rows = categorize(
+      deps.searchTransactions({ from: text(from), to: text(to), by: by === "ledger" ? "ledger" : "billing", q: text(q), currency: text(currency) }),
+      rules,
+    );
     res.json(
       rows.filter(
         (t) => (!text(category) || t.category === category) && (!text(source) || (t.categorySource ?? "none") === source),
       ),
     );
+  });
+
+  // GET /api/pending?month=   Charges not billed yet, from the latest scrape (M6). Categorized like the rest
+  // (rules, then Cal's sector), but read-only: they're replaced on every scrape.
+  app.get("/api/pending", (req, res) => {
+    const { month } = req.query;
+    if (month !== undefined && month !== "" && !requireMonth(month, res)) return;
+    const rules = deps.loadRules();
+    validateRules(rules);
+    res.json(categorize(deps.listPending(typeof month === "string" && month !== "" ? month : undefined), rules));
   });
 
   // PATCH /api/transactions/:id  { category?: string|null, description?: string|null, createRule?: boolean }
@@ -434,6 +477,71 @@ export function createApp(deps: Deps) {
     const month = requireMonth(req.params.month, res);
     if (!month) return;
     res.json(deps.recurringMonth(month));
+  });
+
+  // ---------- M6: the ledger (the dashboard displays these; it never sums anything itself) ----------
+
+  app.get("/api/months/:month/ledger", (req, res) => {
+    const month = requireMonth(req.params.month, res);
+    if (!month) return;
+    res.json(deps.monthLedger(month));
+  });
+  // GET /api/ledger/trend?end=2026-10&n=6
+  app.get("/api/ledger/trend", (req, res) => {
+    const end = requireMonth(req.query.end, res);
+    if (!end) return;
+    const n = req.query.n === undefined ? 6 : Number(req.query.n);
+    if (!Number.isInteger(n) || n < 1 || n > 24) {
+      res.status(400).json({ error: "n must be a whole number from 1 to 24" });
+      return;
+    }
+    res.json(deps.ledgerTrend(end, n));
+  });
+  app.get("/api/months/:month/status", (req, res) => {
+    const month = requireMonth(req.params.month, res);
+    if (!month) return;
+    res.json(deps.monthStatus(month));
+  });
+
+  // ---------- M6: confirm mode and one-time entries ----------
+
+  // Confirm a confirm-mode month at its actual amount: { amount }. Always this month only.
+  app.post("/api/recurring/:id/occurrences/:month/confirm", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const month = id && requireMonth(req.params.month, res);
+    if (!id || !month) return;
+    const amount = req.body?.amount;
+    if (typeof amount !== "number" || !Number.isFinite(amount)) {
+      res.status(400).json({ error: "Expected { amount: number }" });
+      return;
+    }
+    res.json({ exception: deps.confirmRecurringMonth(id, month, amount) });
+  });
+  app.delete("/api/recurring/:id/occurrences/:month/confirm", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const month = id && requireMonth(req.params.month, res);
+    if (!id || !month) return;
+    res.json({ exception: deps.unconfirmRecurringMonth(id, month) });
+  });
+
+  app.get("/api/manual-entries", (req, res) => {
+    const { month } = req.query;
+    if (month !== undefined && month !== "" && !requireMonth(month, res)) return;
+    res.json(deps.listManualEntries(typeof month === "string" && month !== "" ? month : undefined));
+  });
+  app.post("/api/manual-entries", (req, res) => {
+    res.status(201).json(deps.createManualEntry(manualFields(req.body) as NewManualEntry));
+  });
+  app.patch("/api/manual-entries/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    res.json(deps.updateManualEntry(id, manualFields(req.body)));
+  });
+  app.delete("/api/manual-entries/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    deps.deleteManualEntry(id);
+    res.status(204).end();
   });
 
   // Unknown /api paths get JSON, not Express's default HTML page.

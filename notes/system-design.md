@@ -126,3 +126,27 @@ Each lesson has key points, then interview questions with the answers we settled
    - ⚠️ Put the filter in one place (a view or a repository function like `loadTransactions()`) so callers can't forget it.
 
 ---
+
+## Lesson 3: Modeling recurring data: computed occurrences, exceptions, effective-dated changes
+
+**Key points**
+- **Computed vs materialized occurrences:** store a row for every month (materialized), or store one rule and work out the months when you need them (computed, the way calendar recurrence works).
+  - Computed: no backfill job, no "generate the next 12 months" step, and changing the rule updates every month. Materialized: simple queries and easy per-row edits, but rows go stale when the rule changes.
+  - Most calendar systems mix the two: a recurrence rule plus a list of exception dates.
+- **Exceptions table:** store only the months that differ (`recurring_exceptions`: amount, skipped, note), keyed by `(definition_id, month)`. One month gets at most one exception, and editing that month is an upsert.
+- **Effective-dated changes (splitting a definition):** "from this month on" closes the old definition (`end_month` = the month before) and starts a new one linked by `previous_id`. Later exceptions move to the new definition. Past months keep their history.
+  - There are three edits, each with different meaning: *this month only* (an exception), *from this month on* (a split), *every month* (fix the definition itself, for a mistake).
+- **Matching expected to actual:** deterministic code, not the agent. The same merchant and currency, within a tolerance (10% by default). The closest amount wins, and each charge pays at most one item.
+- **Not counting twice:** a card-paid recurring item is already part of card spending, so it's never added to totals. Items outside the card (salary, rent by bank transfer) count at their expected amount.
+- **Pure core, I/O at the edges:** `occurrencesFor()`, `splitDefinition()` and `summarizeRecurring()` are pure and unit-tested, while the SQL lives in `src/db/recurring.ts`.
+- **In this project:** `src/db/migrations/004_recurring.sql`, with `CHECK` constraints for kind, tolerance and `end_month >= start_month`. Also `src/recurring.ts`, `changeFrom()`/`setMonth()` in `src/db/recurring.ts`, the Recurring page, and the dashboard's "left over" figure (income − card spending − outside the card). The milestone has 128 tests.
+
+**Interview questions**
+1. You need to model monthly recurring payments, like rent or salary. Would you store a row per month, or store the rule and compute the months? What are the trade-offs?
+   - *Answer:* I'd store the rule and compute the months, the way calendar recurrence works, and keep an exceptions table for months that differ.
+     You never have to backfill or generate rows ahead of time, and changing the rule automatically updates every month.
+     The downside is that you can't just run SQL over the months: you expand the rule in code for a bounded month range.
+     I'd store a row per month instead if each occurrence carried a lot of its own state or needed heavy SQL reporting.
+   - ⚠️ An open-ended rule has no last month, so always query a bounded range.
+
+---

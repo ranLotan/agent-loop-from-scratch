@@ -8,7 +8,7 @@ import { inTransaction, NotFoundError, ValidationError } from "./index";
 
 /** What a new definition needs; the rest has defaults. */
 export type NewDefinition = Pick<RecurringDefinition, "name" | "kind" | "amount" | "startMonth"> &
-  Partial<Pick<RecurringDefinition, "currency" | "category" | "dayOfMonth" | "endMonth" | "merchant" | "tolerance">>;
+  Partial<Pick<RecurringDefinition, "currency" | "category" | "dayOfMonth" | "endMonth" | "merchant" | "tolerance" | "confirmMode">>;
 
 /** An edit that applies to every month of the definition (fixing a mistake, or ending it). */
 export type DefinitionEdit = DefinitionChanges & Partial<Pick<RecurringDefinition, "startMonth" | "endMonth">>;
@@ -27,6 +27,7 @@ function toDefinition(r: Record<string, unknown>): RecurringDefinition {
     merchant: r.merchant as string | null,
     tolerance: r.tolerance as number,
     previousId: r.previous_id === null ? null : Number(r.previous_id),
+    confirmMode: r.confirm_mode as RecurringDefinition["confirmMode"],
   };
 }
 
@@ -64,6 +65,12 @@ function validRow(db: DatabaseSync, d: Omit<RecurringDefinition, "id">) {
     categoryId = Number(row.id);
   }
   const merchant = d.merchant?.replace(/\s+/g, " ").trim() || null;
+  if (d.confirmMode !== "auto" && d.confirmMode !== "confirm") throw new ValidationError("confirmMode must be auto or confirm");
+  if (d.confirmMode === "confirm") {
+    // A card-paid item is confirmed by its card charge; and the ledger's Net is in shekels.
+    if (merchant) throw new ValidationError("Paid by card: its card charge is the confirmation, so it can't be in confirm mode");
+    if (d.currency !== "ILS") throw new ValidationError("Confirm mode is for shekel (ILS) items only");
+  }
   return {
     name,
     kind: d.kind,
@@ -76,6 +83,7 @@ function validRow(db: DatabaseSync, d: Omit<RecurringDefinition, "id">) {
     merchant,
     normalized_merchant: merchant && normalizeMerchant(merchant),
     tolerance: d.tolerance,
+    confirm_mode: d.confirmMode,
     previous_id: d.previousId,
   };
 }
@@ -85,9 +93,9 @@ function insert(db: DatabaseSync, d: Omit<RecurringDefinition, "id">): Recurring
   const id = db
     .prepare(`
       INSERT INTO recurring_definitions (name, kind, amount, currency, category_id, day_of_month, start_month, end_month,
-        merchant, normalized_merchant, tolerance, previous_id, created_at)
+        merchant, normalized_merchant, tolerance, confirm_mode, previous_id, created_at)
       VALUES (:name, :kind, :amount, :currency, :category_id, :day_of_month, :start_month, :end_month,
-        :merchant, :normalized_merchant, :tolerance, :previous_id, :created_at)
+        :merchant, :normalized_merchant, :tolerance, :confirm_mode, :previous_id, :created_at)
     `)
     .run({ ...row, created_at: new Date().toISOString() }).lastInsertRowid;
   return getDefinition(db, Number(id));
@@ -101,6 +109,7 @@ export function createDefinition(db: DatabaseSync, input: NewDefinition): Recurr
     endMonth: null,
     merchant: null,
     tolerance: 0.1,
+    confirmMode: "auto",
     ...input,
     previousId: null,
   });
@@ -114,7 +123,7 @@ export function updateDefinition(db: DatabaseSync, id: number, edit: DefinitionE
   db.prepare(`
     UPDATE recurring_definitions SET name = :name, kind = :kind, amount = :amount, currency = :currency,
       category_id = :category_id, day_of_month = :day_of_month, start_month = :start_month, end_month = :end_month,
-      merchant = :merchant, normalized_merchant = :normalized_merchant, tolerance = :tolerance
+      merchant = :merchant, normalized_merchant = :normalized_merchant, tolerance = :tolerance, confirm_mode = :confirm_mode
     WHERE id = :id
   `).run({ ...row, id });
   return getDefinition(db, id);
@@ -165,6 +174,7 @@ export function listExceptions(db: DatabaseSync): RecurringException[] {
       amount: r.amount as number | null,
       skipped: Boolean(r.skipped),
       note: r.note as string | null,
+      confirmedAt: r.confirmed_at as string | null,
     }));
 }
 
@@ -190,13 +200,41 @@ export function setMonth(db: DatabaseSync, id: number, month: string, change: Mo
     skipped: change.skipped ?? current?.skipped ?? false,
     note: (change.note !== undefined ? change.note : (current?.note ?? null))?.trim() || null,
   };
+  // A confirmation is "this amount, confirmed": without an amount (or when skipped) there's nothing confirmed.
+  const confirmedAt = next.amount !== null && !next.skipped ? (current?.confirmedAt ?? null) : null;
   if (next.amount === null && !next.skipped && next.note === null) {
     db.prepare("DELETE FROM recurring_exceptions WHERE definition_id = ? AND month = ?").run(id, month);
     return null;
   }
   db.prepare(`
-    INSERT INTO recurring_exceptions (definition_id, month, amount, skipped, note) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT (definition_id, month) DO UPDATE SET amount = excluded.amount, skipped = excluded.skipped, note = excluded.note
-  `).run(id, month, next.amount, next.skipped ? 1 : 0, next.note);
-  return { definitionId: id, month, ...next };
+    INSERT INTO recurring_exceptions (definition_id, month, amount, skipped, note, confirmed_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (definition_id, month) DO UPDATE SET
+      amount = excluded.amount, skipped = excluded.skipped, note = excluded.note, confirmed_at = excluded.confirmed_at
+  `).run(id, month, next.amount, next.skipped ? 1 : 0, next.note, confirmedAt);
+  return { definitionId: id, month, ...next, confirmedAt };
+}
+
+/**
+ * Confirms a confirm-mode month at its actual amount (always this month only: changing the usual amount
+ * is "from this month on"). Next month suggests this amount. Confirming again overwrites it.
+ */
+export function confirmMonth(db: DatabaseSync, id: number, month: string, amount: number): RecurringException {
+  return inTransaction(db, () => {
+    const def = getDefinition(db, id);
+    if (def.confirmMode !== "confirm" || def.merchant) throw new ValidationError(`${def.name} isn't in confirm mode: it counts automatically`);
+    if (!(typeof amount === "number" && amount > 0)) throw new ValidationError("The amount must be a positive number");
+    setMonth(db, id, month, { amount, skipped: false }); // validates the month and keeps the note
+    const confirmedAt = new Date().toISOString();
+    db.prepare("UPDATE recurring_exceptions SET confirmed_at = ? WHERE definition_id = ? AND month = ?").run(confirmedAt, id, month);
+    return listExceptions(db).find((e) => e.definitionId === id && e.month === month)!;
+  });
+}
+
+/** Takes a confirmation back: the month waits for confirmation again, with nothing counted. */
+export function unconfirmMonth(db: DatabaseSync, id: number, month: string): RecurringException | null {
+  return inTransaction(db, () => {
+    getDefinition(db, id);
+    db.prepare("UPDATE recurring_exceptions SET confirmed_at = NULL WHERE definition_id = ? AND month = ?").run(id, month);
+    return setMonth(db, id, month, { amount: null }); // back to the suggestion; a note alone keeps the row
+  });
 }

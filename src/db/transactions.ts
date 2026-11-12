@@ -2,6 +2,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { normalizeMerchant } from "../categorize";
+import { ledgerMonth } from "../ledger";
 import type { Transaction } from "../types";
 import { inTransaction, NotFoundError, ValidationError } from "./index";
 
@@ -21,13 +22,39 @@ interface TransactionRow {
   card: string | null;
   source: Transaction["source"];
   billing_month: string;
+  ledger_month: string;
   category_override: string | null;
   description_override: string | null;
   override_source: "manual" | "agent" | null;
 }
 
-/** A transaction plus the statement month it was billed in, for views that span months. */
-export type StoredTransaction = Transaction & { billingMonth: string };
+/** A transaction plus the statement month it was billed in and the month it counts in (src/ledger.ts). */
+export type StoredTransaction = Transaction & { billingMonth: string; ledgerMonth: string };
+
+const toStored = (row: TransactionRow): StoredTransaction => ({
+  ...toTransaction(row),
+  billingMonth: row.billing_month,
+  ledgerMonth: row.ledger_month,
+});
+
+/**
+ * Fills ledger_month on rows imported before migration 005. A no-op once every row has one.
+ * Done here, not in SQL, so ledgerMonth() stays the only definition of the rule.
+ */
+export function backfillLedgerMonths(db: DatabaseSync): number {
+  const rows = db
+    .prepare("SELECT id, date, installment_number, installment_total FROM transactions WHERE ledger_month IS NULL")
+    .all() as { id: string; date: string; installment_number: number | null; installment_total: number | null }[];
+  if (!rows.length) return 0;
+  const update = db.prepare("UPDATE transactions SET ledger_month = ? WHERE id = ?");
+  inTransaction(db, () => {
+    for (const r of rows) {
+      const installments = r.installment_number === null ? undefined : { number: r.installment_number, total: r.installment_total ?? 0 };
+      update.run(ledgerMonth({ date: r.date, installments }), r.id);
+    }
+  });
+  return rows.length;
+}
 
 /** SQL's NULL becomes an absent field, matching how the JSON files looked. */
 function toTransaction(row: TransactionRow): Transaction {
@@ -67,17 +94,18 @@ export function upsertTransactions(
   // category_override, description_override and override_source are the owner's edits, so they're never listed.
   const insert = db.prepare(`
     INSERT INTO transactions (
-      id, billing_month, position, date, merchant, normalized_merchant, amount, currency,
+      id, billing_month, ledger_month, position, date, merchant, normalized_merchant, amount, currency,
       original_amount, original_currency, type, installment_number, installment_total,
       sector, memo, card, source, import_batch_id, updated_at
     ) VALUES (
-      :id, :billing_month, :position, :date, :merchant, :normalized_merchant, :amount, :currency,
+      :id, :billing_month, :ledger_month, :position, :date, :merchant, :normalized_merchant, :amount, :currency,
       :original_amount, :original_currency, :type, :installment_number, :installment_total,
       :sector, :memo, :card, :source, :import_batch_id, :updated_at
     )
     ON CONFLICT (id) DO UPDATE SET
       billing_month       = excluded.billing_month,
-      position            = excluded.position,
+      ledger_month        = excluded.ledger_month,
+      position           = excluded.position,
       date                = excluded.date,
       merchant            = excluded.merchant,
       normalized_merchant = excluded.normalized_merchant,
@@ -103,6 +131,7 @@ export function upsertTransactions(
       insert.run({
         id: t.id,
         billing_month: billingMonth,
+        ledger_month: ledgerMonth(t),
         position,
         date: t.date,
         merchant: t.merchant,
@@ -142,9 +171,11 @@ export function listMonths(db: DatabaseSync): string[] {
 }
 
 export interface TransactionSearch {
-  /** Billing months, inclusive, like "2026-05". */
+  /** Months, inclusive, like "2026-05": billing months, or ledger months with `by: "ledger"`. */
   from?: string;
   to?: string;
+  /** Which month `from`/`to` (and the sort order) mean. Default "billing". */
+  by?: "billing" | "ledger";
   /** Text in the bank's merchant name or in your description. */
   q?: string;
   currency?: string;
@@ -157,8 +188,10 @@ export interface TransactionSearch {
 export function searchTransactions(db: DatabaseSync, search: TransactionSearch = {}): StoredTransaction[] {
   const where = ["missing_since_batch_id IS NULL"];
   const params: string[] = [];
-  if (search.from) where.push("billing_month >= ?"), params.push(search.from);
-  if (search.to) where.push("billing_month <= ?"), params.push(search.to);
+  // A fixed column name from a two-value union, never user text, so it's safe to put in the SQL.
+  const month = search.by === "ledger" ? "ledger_month" : "billing_month";
+  if (search.from) where.push(`${month} >= ?`), params.push(search.from);
+  if (search.to) where.push(`${month} <= ?`), params.push(search.to);
   if (search.currency) where.push("currency = ?"), params.push(search.currency);
   if (search.q?.trim()) {
     // instr() on lower(): a plain "contains", so % and _ in the search text have no special meaning (unlike LIKE).
@@ -166,14 +199,15 @@ export function searchTransactions(db: DatabaseSync, search: TransactionSearch =
     params.push(search.q.trim(), search.q.trim());
   }
   const rows = db
-    .prepare(`SELECT * FROM transactions WHERE ${where.join(" AND ")} ORDER BY billing_month DESC, position`)
+    // By ledger month, a month's rows come from several statements, so date order reads better than statement order.
+    .prepare(`SELECT * FROM transactions WHERE ${where.join(" AND ")} ORDER BY ${search.by === "ledger" ? "ledger_month DESC, date, billing_month, position" : "billing_month DESC, position"}`)
     .all(...params) as unknown as TransactionRow[];
-  return rows.map((row) => ({ ...toTransaction(row), billingMonth: row.billing_month }));
+  return rows.map(toStored);
 }
 
 export function getTransaction(db: DatabaseSync, id: string): StoredTransaction | null {
   const row = db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as unknown as TransactionRow | undefined;
-  return row ? { ...toTransaction(row), billingMonth: row.billing_month } : null;
+  return row ? toStored(row) : null;
 }
 
 export interface OverrideChange {

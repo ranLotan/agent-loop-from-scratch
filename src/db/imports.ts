@@ -5,7 +5,25 @@ import type { DatabaseSync } from "node:sqlite";
 import type { ParsedStatement } from "../statement-import";
 import type { Transaction } from "../types";
 import { inTransaction } from "./index";
+import { replacePending } from "./pending";
 import { loadTransactions, upsertTransactions } from "./transactions";
+
+/**
+ * A scrape: the billing month's rows (as importBatch) plus the full list of pending charges, which
+ * replaces the previous one. One all-or-nothing change, so a failure never leaves half a list.
+ */
+export function importScrape(
+  db: DatabaseSync,
+  billingMonth: string,
+  transactions: Transaction[],
+  pending: Omit<Transaction, "id">[],
+): ImportResult {
+  return inTransaction(db, () => {
+    const result = importBatch(db, billingMonth, transactions, { source: "scraper" });
+    replacePending(db, result.batchId, pending);
+    return result;
+  });
+}
 
 export interface BatchInfo {
   source: Transaction["source"] | "json-migration";
