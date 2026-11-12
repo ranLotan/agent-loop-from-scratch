@@ -25,7 +25,7 @@ One person (me), on my own computer. I have a Visa Cal card through Bank Beinleu
 | **Review** | The agent's pending proposals and flags. Approve / change / new category / note / skip, the same choices as `npm run approve` |
 | **Rules** | Merchant rules and categories: create, edit, delete |
 | **Imports** | Upload a Cal xlsx/csv or trigger a scrape, plus the history of import batches with their total checks |
-| **Manual transactions** | For the month: recurring items (confirm, or edit this month only / from now on) and one-time entries. Recurring definitions are managed on a sub-page |
+| **Manual transactions** | For the month: recurring items (confirm, or edit this month only / from now on) and one-time entries. Recurring items are added, edited (this month / from now on / every month) and removed on the same page |
 
 Each transaction shows **how it was categorized**: Rule, Cal sector, Agent (approved proposal) or Manual.
 

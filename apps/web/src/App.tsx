@@ -5,12 +5,11 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { ImportsPage } from "./pages/ImportsPage";
 import { ManualPage } from "./pages/ManualPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { RecurringDefinitionsPage } from "./pages/RecurringDefinitionsPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { RulesPage } from "./pages/RulesPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 
-/** The M5 /recurring URL now lives at /manual (M6). Keeps ?month= so old bookmarks land on the same month. */
+/** Old URLs (M5's /recurring, M6's /manual/definitions) now land on /manual. Keeps ?month= so bookmarks open the same month. */
 function RecurringRedirect() {
   const { search } = useLocation();
   return <Navigate to={{ pathname: "/manual", search }} replace />;
@@ -27,9 +26,9 @@ export function App() {
             <Route path="transactions" element={<TransactionsPage />} />
             <Route path="review" element={<ReviewPage />} />
             <Route path="manual" element={<ManualPage />} />
-            <Route path="manual/definitions" element={<RecurringDefinitionsPage />} />
           </Route>
           <Route path="recurring" element={<RecurringRedirect />} />
+          <Route path="manual/definitions" element={<RecurringRedirect />} />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="rules" element={<RulesPage />} />
           <Route path="*" element={<NotFoundPage />} />

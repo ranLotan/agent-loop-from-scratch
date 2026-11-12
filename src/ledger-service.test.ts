@@ -83,4 +83,17 @@ test("month status: card data, review and manual steps, and the next step to do"
 
   const dec = monthStatus("2026-12");
   assert.deepEqual([dec.card.state, dec.next], ["missing", "card"]);
+  assert.equal(sep.review.statement, null, "nothing pending");
+});
+
+test("review status names the statement that has the pending items (Review works per statement)", () => {
+  // A pending proposal on the October statement: mostly September purchases.
+  store.saveProposals("2026-10", {
+    month: "2026-10", createdAt: "2026-10-31T00:00:00Z", model: "fake", reviewed: [], flags: [],
+    proposals: [{ merchant: "Some Shop", category: "מזון", confidence: "low", reason: "Unclear." }],
+  });
+  const sep = monthStatus("2026-09");
+  assert.deepEqual([sep.review.proposals, sep.review.statement, sep.next], [1, "2026-10", "review"]);
+  assert.equal(monthStatus("2026-10").review.statement, "2026-10", "October's own statement");
+  assert.equal(monthStatus("2026-08").review.statement, null, "the August and September statements have nothing pending");
 });

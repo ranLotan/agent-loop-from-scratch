@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { api, type ManualEntry, type ManualEntryInput, type Occurrence, type RecurringDefinition } from "../api";
 import { MonthEditor } from "../components/MonthEditor";
 import { RecurringForm } from "../components/RecurringForm";
-import { formatMoney } from "../format";
+import { formatMoney, monthBefore } from "../format";
 import { useApi } from "../hooks/useApi";
 import { useSelectedMonth } from "../hooks/useSelectedMonth";
 
@@ -36,18 +35,29 @@ export function ManualPage() {
 
       <h2>Recurring</h2>
       <p className="muted">
-        <Link to={`/manual/definitions?month=${month}`}>Manage recurring definitions</Link>
+        Outside the card (salary, rent by bank transfer): counted automatically, or after you confirm each month's amount. Paid by card:
+        matched to its charge, never counted twice.
       </p>
       {recurring.error && <p role="alert">Error: {recurring.error}</p>}
       {recurring.data && definitions.data && (
-        <RecurringTable
-          month={month}
-          occurrences={recurring.data.occurrences}
-          definitions={definitions.data}
-          categories={categoryNames}
-          onChanged={reload}
-        />
+        <>
+          <RecurringTable
+            month={month}
+            occurrences={recurring.data.occurrences}
+            definitions={definitions.data}
+            categories={categoryNames}
+            onChanged={reload}
+          />
+          <OtherMonths
+            month={month}
+            // Items that don't run this month (stopped earlier, or start later): the only place left to edit or delete them.
+            definitions={definitions.data.filter((d) => !recurring.data!.occurrences.some((o) => o.definitionId === d.id))}
+            categories={categoryNames}
+            onChanged={reload}
+          />
+        </>
       )}
+      <AddRecurring month={month} categories={categoryNames} onAdded={reload} />
 
       <h2>One-time</h2>
       {entries.error && <p role="alert">Error: {entries.error}</p>}
@@ -57,7 +67,9 @@ export function ManualPage() {
 }
 
 /** Which inline editor is open, and for which row. One at a time, so the state is a single value, not a flag per row. */
-type Editing = { id: number; kind: "choose" | "month" | "forward" } | null;
+type Editing = { id: number; kind: "choose" | "month" | "forward" | "all" | "remove" } | null;
+
+const confirmDelete = (name: string) => window.confirm(`Delete "${name}" from every month, including past ones? This can't be undone.`);
 
 function RecurringTable(props: {
   month: string;
@@ -126,6 +138,41 @@ function RecurringTable(props: {
                       <button type="button" onClick={() => setEditing({ id: o.definitionId, kind: "forward" })} disabled={!def}>
                         From now on
                       </button>
+                      <button type="button" onClick={() => setEditing({ id: o.definitionId, kind: "all" })} disabled={!def} title="The item itself, past months included">
+                        Every month
+                      </button>
+                      <button type="button" onClick={() => setEditing(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                  {isEditing && editing.kind === "remove" && (
+                    // Three ways to "remove", from the lightest to the only one that loses history.
+                    <div className="actions">
+                      {o.status !== "skipped" && (
+                        <button type="button" onClick={() => run(api.setRecurringMonth(o.definitionId, month, { skipped: true }))} title="Not counted this month; other months unchanged">
+                          Skip {month} only
+                        </button>
+                      )}
+                      {def && month > def.startMonth && (
+                        <button type="button" onClick={() => run(api.updateRecurring(def.id, { endMonth: monthBefore(month) }))} title="Earlier months keep it; it's gone from this month on">
+                          Stop from {month} on
+                        </button>
+                      )}
+                      {def && def.endMonth !== month && (
+                        <button type="button" onClick={() => run(api.updateRecurring(def.id, { endMonth: month }))} title="This month and earlier keep it; gone from next month">
+                          Stop after {month}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirmDelete(o.name)) run(api.deleteRecurring(o.definitionId));
+                        }}
+                        title="As if it never existed, past months included"
+                      >
+                        Delete everywhere
+                      </button>
                       <button type="button" onClick={() => setEditing(null)}>
                         Cancel
                       </button>
@@ -142,10 +189,22 @@ function RecurringTable(props: {
                       onCancel={() => setEditing(null)}
                     />
                   )}
+                  {isEditing && editing.kind === "all" && def && (
+                    <RecurringForm
+                      initial={def}
+                      categories={categories}
+                      submitLabel="Save for every month"
+                      onSubmit={(input) => run(api.updateRecurring(def.id, input))}
+                      onCancel={() => setEditing(null)}
+                    />
+                  )}
                   {!isEditing && (
                     <div className="actions">
                       <button type="button" className="link-button" onClick={() => setEditing({ id: o.definitionId, kind: "choose" })}>
                         Edit
+                      </button>
+                      <button type="button" className="link-button" onClick={() => setEditing({ id: o.definitionId, kind: "remove" })}>
+                        Remove
                       </button>
                       {o.confirmMode === "confirm" && o.status === "expected" && (
                         <button type="button" className="link-button" onClick={() => run(api.unconfirmMonth(o.definitionId, month))}>
@@ -161,6 +220,88 @@ function RecurringTable(props: {
         </tbody>
       </table>
     </>
+  );
+}
+
+/** "Add a recurring item", starting in the selected month (moved here from the old definitions page). */
+function AddRecurring({ month, categories, onAdded }: { month: string; categories: string[]; onAdded: () => void }) {
+  const [adding, setAdding] = useState(false);
+  return adding ? (
+    <RecurringForm
+      categories={categories}
+      submitLabel="Add"
+      askStartMonth={month}
+      onSubmit={(input) => api.createRecurring(input).then(() => (setAdding(false), onAdded()))}
+      onCancel={() => setAdding(false)}
+    />
+  ) : (
+    <button onClick={() => setAdding(true)}>Add a recurring item</button>
+  );
+}
+
+/** Items that don't run in the selected month, collapsed: edit them (every month), run them again, or delete them. */
+function OtherMonths(props: { month: string; definitions: RecurringDefinition[]; categories: string[]; onChanged: () => void }) {
+  const { month, definitions, categories, onChanged } = props;
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = (work: Promise<unknown>) =>
+    work.then(() => (setEditingId(null), setError(null), onChanged())).catch((err) => setError((err as Error).message));
+
+  if (!definitions.length) return null;
+  return (
+    <details>
+      <summary>
+        Not in {month} ({definitions.length})
+      </summary>
+      {error && <p role="alert">Error: {error}</p>}
+      <table className="data-table">
+        <tbody>
+          {definitions.map((d) => (
+            <tr key={d.id}>
+              <td dir="auto">
+                {d.kind === "income" ? "↑ " : "↓ "}
+                {d.name}
+                <div className="sub">
+                  {d.startMonth} → {d.endMonth ?? "ongoing"}
+                </div>
+              </td>
+              <td className="num">{formatMoney(d.amount, d.currency)}</td>
+              <td>
+                {editingId === d.id ? (
+                  <RecurringForm
+                    initial={d}
+                    categories={categories}
+                    submitLabel="Save for every month"
+                    onSubmit={(input) => run(api.updateRecurring(d.id, input))}
+                    onCancel={() => setEditingId(null)}
+                  />
+                ) : (
+                  <div className="actions">
+                    <button type="button" className="link-button" onClick={() => setEditingId(d.id)}>
+                      Edit every month
+                    </button>
+                    {d.endMonth !== null && d.endMonth < month && (
+                      <button type="button" className="link-button" onClick={() => run(api.updateRecurring(d.id, { endMonth: null }))} title="Remove the end month">
+                        Run again (no end)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => {
+                        if (confirmDelete(d.name)) run(api.deleteRecurring(d.id));
+                      }}
+                    >
+                      Delete everywhere
+                    </button>
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   );
 }
 

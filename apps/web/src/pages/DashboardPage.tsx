@@ -85,7 +85,11 @@ function StatusStrip({ status, byHandName }: { status: MonthStatus; byHandName?:
   const missingStatement = card.statements.find((s) => !s.imported)?.month ?? nextMonth;
   const links = {
     card: `/imports?month=${missingStatement}`,
-    review: toReview > 0 || !byHandName ? `/review?month=${month}` : `/transactions?month=${month}&category=${encodeURIComponent(byHandName)}`,
+    // Review is per statement: open it on the statement that has this month's pending items, not on the purchase month.
+    review:
+      toReview > 0 || !byHandName
+        ? `/review?month=${review.statement ?? nextMonth ?? month}`
+        : `/transactions?month=${month}&category=${encodeURIComponent(byHandName)}`,
     manual: `/manual?month=${month}`,
   };
   const cardText =

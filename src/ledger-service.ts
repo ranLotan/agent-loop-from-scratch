@@ -52,7 +52,11 @@ export function ledgerTrend(endMonth: string, n = 6): TrendPoint[] {
 export interface MonthStatus {
   month: string;
   card: CardStatus;
-  review: { proposals: number; flags: number; byHand: number };
+  /**
+   * `statement`: the first statement (billing month: this one or the next) with pending proposals or flags, so the
+   * dashboard can open the Review page on it. Review works per statement, not per purchase month. null = none pending.
+   */
+  review: { proposals: number; flags: number; byHand: number; statement: string | null };
   manual: { awaiting: number };
   /** The first step that isn't finished, in pipeline order; null = the month is done. */
   next: "card" | "review" | "manual" | null;
@@ -61,12 +65,17 @@ export interface MonthStatus {
 /** What's left to do for a month: card data, review, manual confirmations. */
 export function monthStatus(month: string): MonthStatus {
   const { card } = categorizedCard(month);
-  const billingMonths = [month, shiftMonth(month, 1)];
+  // The agent runs per statement (billing month), so a purchase month's review spans both statements.
+  const pending = [month, shiftMonth(month, 1)].map((m) => ({
+    statement: m,
+    proposals: store.listProposals(m).filter((p) => p.status === "pending").length,
+    flags: store.listFlags(m).filter((f) => f.status === "pending").length,
+  }));
   const review = {
-    // The agent runs per statement (billing month), so a purchase month's review spans both statements.
-    proposals: billingMonths.flatMap((m) => store.listProposals(m)).filter((p) => p.status === "pending").length,
-    flags: billingMonths.flatMap((m) => store.listFlags(m)).filter((f) => f.status === "pending").length,
+    proposals: pending.reduce((n, s) => n + s.proposals, 0),
+    flags: pending.reduce((n, s) => n + s.flags, 0),
     byHand: card.filter((t) => t.category === MANUAL_CATEGORY).length,
+    statement: pending.find((s) => s.proposals + s.flags > 0)?.statement ?? null,
   };
   const manual = { awaiting: store.recurringMonth(month).summary.awaiting };
   const cardStatus = cardState(month, store.listImports(), store.listPending(month).length > 0);

@@ -114,14 +114,14 @@ Source: `src/investigate-raw.ts` over 5 saved scrapes (`data/raw/`, 2,205 rows: 
 
 ### Step 6.5: Manual transactions page
 - Rename the Recurring page to **Manual transactions**, for the selected month:
-  - **Recurring:** each occurrence with its status. Auto items appear as counted, with an Edit action. Confirm items appear as awaiting confirmation, with the suggested amount pre-filled and a Confirm button. Edit asks "This month only / From now on". Card-paid items show as paid / not seen, read-only here.
+  - **Recurring:** each occurrence with its status. Auto items appear as counted, with an Edit action. Confirm items appear as awaiting confirmation, with the suggested amount pre-filled and a Confirm button. Edit asks "This month only / From now on / Every month". Card-paid items show as paid / not seen, read-only here. Remove offers *Skip this month only*, *Stop from this month on* or *Stop after this month* (sets `endMonth`, history kept) and *Delete everywhere* (asks first: it removes past months too).
   - **One-time:** a list for the month plus an "Add one-time" form (date, name, income/expense, amount, category).
-  - **Manage recurring definitions:** the current editor, moved to a secondary route.
+  - **Manage recurring definitions:** ~~the current editor, moved to a secondary route~~. Merged into the Manual page (2026-11-12): two places to edit the same item made no sense. See the note under Done.
 - The navigation shows **Card transactions** and **Manual transactions**.
 
 **React practice:** controlled forms, lifting state for the selected month, an inline confirm/edit row.
 
-**Done (2026-11-12).** `/manual` (`ManualPage.tsx`) and `/manual/definitions` (`RecurringDefinitionsPage.tsx`); `/recurring` redirects to `/manual` and keeps `?month=`. `MonthEditor` became a shared component. The recurring form gained "Counts automatically / after I confirm the amount" (hidden when a merchant is set). In the definition's first month, "From now on" edits the definition itself, since there's nothing earlier to keep.
+**Done (2026-11-12).** `/manual` (`ManualPage.tsx`) and `/manual/definitions` (`RecurringDefinitionsPage.tsx`); `/recurring` redirects to `/manual` and keeps `?month=`. `MonthEditor` became a shared component. The recurring form gained "Counts automatically / after I confirm the amount" (hidden when a merchant is set). In the definition's first month, "From now on" edits the definition itself, since there's nothing earlier to keep. **Later (2026-11-12):** the definitions page was removed and merged into `/manual` (`/manual/definitions` redirects there). "Add a recurring item" sits under the Recurring table, and items that don't run in the selected month are in a collapsed "Not in this month" list (edit every month, run again, delete).
 
 ### Step 6.6: Month status and the dashboard
 - `monthStatus(month)` in the core, exposed via the API:

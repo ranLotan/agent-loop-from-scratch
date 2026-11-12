@@ -24,3 +24,9 @@ export function formatForeign(totals: Totals): string {
     .map(([currency, amount]) => formatMoney(amount, currency))
     .join(" · ");
 }
+
+/** The month before `month` (YYYY-MM): 2026-01 → 2025-12. (src/normalize.ts has shiftMonth, but it imports node:crypto.) */
+export function monthBefore(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type AgentRunResult, type FlagRow, type ProposalRow } from "../api";
 import { ProposalCard } from "../components/ProposalCard";
-import { formatMoney } from "../format";
+import { formatMoney, monthBefore } from "../format";
 import { useApi } from "../hooks/useApi";
 import { useJob } from "../hooks/useJob";
 import { useSelectedMonth } from "../hooks/useSelectedMonth";
@@ -46,7 +46,12 @@ export function ReviewPage() {
 
   return (
     <section>
-      <h1>Review, {month}</h1>
+      {/* The agent runs per statement (billing month), unlike the dashboard's purchase months: say so, or the dates look wrong. */}
+      <h1>Review, the {month} statement</h1>
+      <p>
+        Cal's {month} statement: mostly purchases from {monthBefore(month)}, plus installment payments on older purchases. The dates below
+        are purchase dates.
+      </p>
       <p className="muted">
         The agent only proposes. Nothing becomes a rule, a note or a category until you answer here (or in{" "}
         <code>npm run approve</code>).
