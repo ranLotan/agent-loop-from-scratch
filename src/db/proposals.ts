@@ -220,6 +220,47 @@ export function listProposals(db: DatabaseSync, month: string): ProposalRow[] {
   return run ? db.prepare(`${PROPOSALS_SQL} WHERE p.run_id = ? ORDER BY p.id`).all(run.id).map(toProposal) : [];
 }
 
+/** One charge behind a proposal, so the owner can see what was actually bought before deciding. */
+export interface ProposalCharge {
+  id: string;
+  date: string;
+  amount: number;
+  currency: string;
+  /** Set for a foreign purchase or an installment plan (what was charged differs from the purchase). */
+  originalAmount: number | null;
+  originalCurrency: string | null;
+  installments: { number: number; total: number } | null;
+  memo: string | null;
+}
+
+export type ProposalWithCharges = ProposalRow & { charges: ProposalCharge[] };
+
+/**
+ * listProposals plus each merchant's charges on the reviewed statement (the run's billing month), oldest first.
+ * The agent proposes once per merchant; these are the rows that one answer will categorize.
+ */
+export function listProposalsWithCharges(db: DatabaseSync, month: string): ProposalWithCharges[] {
+  const charges = db.prepare(`
+    SELECT id, date, amount, currency, original_amount, original_currency, installment_number, installment_total, memo
+    FROM transactions
+    WHERE billing_month = ? AND normalized_merchant = ? AND missing_since_batch_id IS NULL
+    ORDER BY date, position
+  `);
+  return listProposals(db, month).map((p) => ({
+    ...p,
+    charges: charges.all(p.month, normalizeMerchant(p.merchant)).map((r) => ({
+      id: r.id as string,
+      date: r.date as string,
+      amount: r.amount as number,
+      currency: r.currency as string,
+      originalAmount: r.original_amount as number | null,
+      originalCurrency: r.original_currency as string | null,
+      installments: r.installment_number === null ? null : { number: Number(r.installment_number), total: Number(r.installment_total) },
+      memo: r.memo as string | null,
+    })),
+  }));
+}
+
 export function listFlags(db: DatabaseSync, month: string): FlagRow[] {
   const run = latestRun(db, month);
   return run ? db.prepare(`${FLAGS_SQL} WHERE f.run_id = ? ORDER BY f.id`).all(run.id).map(toFlag) : [];

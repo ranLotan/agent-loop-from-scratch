@@ -12,6 +12,7 @@ const ANSWER_LABELS: Record<string, string> = {
   new_category: "rule (new category)",
   once: "this month only",
   by_hand: "always by hand",
+  per_charge: "charge by charge",
   note: "note only",
 };
 

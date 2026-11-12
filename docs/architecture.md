@@ -134,6 +134,7 @@ cal-expence-agent/
   - approve, change or new category → a rule
   - **this month only** → an agent-labeled edit on that month's charges (never over a manual edit), plus a memory note, no rule
   - **always by hand** → a rule to the bucket
+  - **charge by charge** (`per_charge`, e.g. BIT) → your own category on each listed charge (a manual edit), plus a memory note, no rule; optionally also the by-hand rule. `applyAnswer` rejects ids that aren't this merchant's charges on this statement
   - note → memory only
   - skip → stays pending
 

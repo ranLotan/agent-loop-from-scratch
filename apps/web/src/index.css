@@ -332,3 +332,14 @@ form,
 .trend rect.dimmed {
   opacity: 0.35;
 }
+
+/* Review: the charges under a proposal, compact. */
+.charges {
+  width: auto;
+  margin: 4px 0 8px;
+}
+
+.charges caption {
+  text-align: start;
+  font-size: 0.85rem;
+}

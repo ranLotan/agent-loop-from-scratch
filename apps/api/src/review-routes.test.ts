@@ -85,6 +85,11 @@ test("an agent run is a background job; its proposals then wait for review", asy
 
   const review = (await call("GET", "/api/review?month=2026-09")).body;
   assert.deepEqual([review.run.model, review.proposals[0].merchant, review.proposals[0].status], ["claude-haiku-5-5", "Corner Cafe", "pending"]);
+  // What was bought, to decide with: the merchant's charges on the reviewed statement.
+  assert.deepEqual(
+    review.proposals[0].charges.map((c: { id: string; date: string; amount: number }) => [c.id, c.date, c.amount]),
+    [["c1", "2026-09-01", 30]],
+  );
   assert.equal((await call("GET", "/api/review?month=bad")).status, 400);
 });
 
@@ -94,6 +99,9 @@ test("answers are validated, applied through decide(), and can't be repeated", a
   assert.equal((await call("POST", path, { kind: "magic" })).status, 400);
   assert.equal((await call("POST", path, { kind: "once" })).status, 400, "once needs a category");
   assert.equal((await call("POST", path, { kind: "note", text: " " })).status, 400);
+  assert.equal((await call("POST", path, { kind: "per_charge", categories: {} })).status, 400, "per_charge needs charges");
+  assert.equal((await call("POST", path, { kind: "per_charge", categories: { c1: "" } })).status, 400);
+  assert.equal((await call("POST", path, { kind: "per_charge", categories: ["c1"] })).status, 400);
   assert.equal((await call("POST", "/api/proposals/999/answer", { kind: "approve" })).status, 404);
 
   const answered = await call("POST", path, { kind: "approve" });

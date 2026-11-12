@@ -187,16 +187,20 @@ export function saveReport(period: string, markdown: string): string {
 
 // ---------- Review, one item at a time (M4) ----------
 
-export type { FlagRow, ProposalRow, ProposalStatus, RunRow } from "./db/proposals";
+export type { FlagRow, ProposalCharge, ProposalRow, ProposalStatus, ProposalWithCharges, RunRow } from "./db/proposals";
 
 export const latestRun = (month: string) => proposalsDb.latestRun(db(), month);
 export const listProposals = (month: string) => proposalsDb.listProposals(db(), month);
+/** The proposals with the charges each one is about (date, amount...), for the Review page. */
+export const listProposalsWithCharges = (month: string) => proposalsDb.listProposalsWithCharges(db(), month);
 export const listFlags = (month: string) => proposalsDb.listFlags(db(), month);
 export const getProposal = (id: number) => proposalsDb.getProposal(db(), id);
 export const getFlag = (id: number) => proposalsDb.getFlag(db(), id);
 export const recordProposalAnswer = (id: number, status: Exclude<proposalsDb.ProposalStatus, "pending">, answer: Answer) =>
   proposalsDb.recordProposalAnswer(db(), id, status, answer);
 export const recordFlagAnswer = (id: number, status: "ok" | "noted") => proposalsDb.recordFlagAnswer(db(), id, status);
+/** Your category on one charge, from the Review page ("charge by charge"): a manual edit, like the Transactions page. */
+export const setChargeCategory = (id: string, category: string) => transactionsDb.setOverride(db(), id, { category }, "manual");
 export const setMonthCategory = (month: string, merchant: string, category: string) =>
   transactionsDb.setMonthCategory(db(), month, merchant, category);
 

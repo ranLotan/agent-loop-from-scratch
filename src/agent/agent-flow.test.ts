@@ -82,6 +82,8 @@ test("a run saves its proposals and flags for review; the by-hand bucket is neve
   assert.ok(!enumOf(sentTools[0]).includes(MANUAL_CATEGORY));
 
   assert.deepEqual(store.listProposals("2026-09").map((p) => p.status), ["pending", "pending", "pending"]);
+  const bit = store.listProposalsWithCharges("2026-09").find((p) => p.merchant === "BIT")!;
+  assert.deepEqual(bit.charges.map((c) => [c.id, c.date, c.amount]), [["b1", "2026-09-02", 100], ["b2", "2026-09-05", 250]], "every charge one answer covers, by date");
   assert.equal(store.listFlags("2026-09")[0].transactionId, "big");
   assert.equal(store.latestRun("2026-09")!.inputTokens, 2000);
   assert.equal(categoryOf("m1")[0], null, "nothing changes until the owner answers");
@@ -130,4 +132,34 @@ test("the next run has nothing to ask: BIT never reaches the agent again", async
   assert.deepEqual(r.merchants, [], "BIT and the others now have a rule, an edit, or the by-hand bucket");
   // The large charge is still a candidate (code finds it every run), so the model is called for that alone.
   assert.equal(sentTools.length > 0, r.candidates.length > 0);
+});
+
+test("charge by charge: each charge its own category (your edit), no rule; byHand keeps it from the agent", () => {
+  store.importTransactions(
+    "2026-10",
+    [tx("q1", "2026-10-01", "PAYBOX", 80), tx("q2", "2026-10-03", "PAYBOX", 35), tx("o1", "2026-10-02", "Other Shop", 10)],
+    { source: "scraper" },
+  );
+  store.saveProposals("2026-10", {
+    month: "2026-10", createdAt: "2026-10-31T00:00:00Z", model: "fake", reviewed: [], flags: [],
+    proposals: [{ merchant: "PAYBOX", category: "שונות", confidence: "low", reason: "A transfer." }],
+  });
+  const id = store.listProposals("2026-10")[0].id;
+  const of = (txId: string) => {
+    const t = categorize(store.loadTransactions("2026-10")!, store.loadRules()).find((x) => x.id === txId)!;
+    return [t.category, t.categorySource];
+  };
+
+  // Ids from the request are checked: another merchant's or another statement's charge → nothing written at all.
+  for (const stranger of ["o1", "p1", "nope"]) {
+    assert.throws(() => applyAnswer(id, { kind: "per_charge", categories: { q1: "מסעדות", [stranger]: "שונות" } }), store.ValidationError);
+  }
+  assert.deepEqual(of("q1"), [null, null], "all or nothing");
+
+  const r = applyAnswer(id, { kind: "per_charge", categories: { q1: "מסעדות", q2: "שונות" }, byHand: true });
+  assert.equal(r.chargesUpdated, 2);
+  assert.deepEqual([of("q1"), of("q2")], [["מסעדות", "manual"], ["שונות", "manual"]]);
+  assert.ok(store.loadRules().rules.some((x) => x.merchant === "PAYBOX" && x.category === MANUAL_CATEGORY), "next month's PAYBOX waits for you");
+  assert.equal(store.getProposal(id).answer?.kind, "per_charge");
+  assert.match(readFileSync(process.env.MEMORY_PATH!, "utf8"), /PAYBOX \| categorized charge by charge \(no rule\): מסעדות, שונות/);
 });

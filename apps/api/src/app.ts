@@ -16,7 +16,7 @@ import type { AgentRunResult } from "../../../src/agent/service";
 import type { ManualEntry, NewManualEntry } from "../../../src/db/manual";
 import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
 import type { PendingCharge } from "../../../src/db/pending";
-import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
+import type { FlagRow, ProposalWithCharges, RunRow } from "../../../src/db/proposals";
 import type { DefinitionEdit, MonthChange, NewDefinition } from "../../../src/db/recurring";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import type { DefinitionChanges, Occurrence, RecurringDefinition, RecurringException, RecurringSummary } from "../../../src/recurring";
@@ -47,7 +47,8 @@ export interface Deps {
   // M4: the agent and the review
   runAgent(month: string): Promise<AgentRunResult>;
   latestRun(month: string): RunRow | null;
-  listProposals(month: string): ProposalRow[];
+  /** With each merchant's charges on the statement, so the Review page can show what was bought. */
+  listProposals(month: string): ProposalWithCharges[];
   listFlags(month: string): FlagRow[];
   answerProposal(id: number, answer: Answer): AppliedAnswer;
   answerFlag(id: number, answer: FlagAnswer): FlagRow;
@@ -105,8 +106,15 @@ function parseAnswer(body: unknown): Answer | string {
       return text(b.category) ? { kind: b.kind, category: b.category as string } : `"${b.kind}" needs a category`;
     case "note":
       return text(b.text) ? { kind: "note", text: b.text as string } : `"note" needs a text`;
+    case "per_charge": {
+      const c = b.categories;
+      const entries = c && typeof c === "object" && !Array.isArray(c) ? Object.entries(c) : [];
+      if (!entries.length || !entries.every(([id, cat]) => id !== "" && text(cat))) return `"per_charge" needs categories: { transactionId: category }`;
+      if (b.byHand !== undefined && typeof b.byHand !== "boolean") return `"byHand" must be true or false`;
+      return { kind: "per_charge", categories: Object.fromEntries(entries) as Record<string, string>, byHand: b.byHand === true };
+    }
     default:
-      return "kind must be one of approve, change, new_category, once, by_hand, note, skip";
+      return "kind must be one of approve, change, new_category, once, by_hand, per_charge, note, skip";
   }
 }
 

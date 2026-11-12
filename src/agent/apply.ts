@@ -11,12 +11,16 @@ import {
   loadRules,
   recordFlagAnswer,
   recordProposalAnswer,
+  getTransaction,
+  setChargeCategory,
   setMonthCategory,
   ConflictError,
+  ValidationError,
   type FlagRow,
   type ProposalRow,
   type ProposalStatus,
 } from "../store";
+import { normalizeMerchant } from "../categorize";
 import { decide, formatMemoryNote, type Action, type Answer } from "./review";
 
 /** How an answer is recorded. "skip" isn't recorded at all: the proposal stays pending and comes back. */
@@ -27,12 +31,13 @@ const STATUS: Record<Exclude<Answer["kind"], "skip">, Exclude<ProposalStatus, "p
   note: "noted",
   once: "answered",
   by_hand: "answered",
+  per_charge: "answered",
 };
 
 export interface AppliedAnswer {
   proposal: ProposalRow;
   actions: Action[];
-  /** Charges that got a one-month category ("once"). */
+  /** Charges that got a category from this answer ("once" or "per_charge"). */
   chargesUpdated: number;
 }
 
@@ -54,7 +59,18 @@ export function applyAnswer(proposalId: number, answer: Answer, today = new Date
     addCategories(actions.flatMap((a) => (a.kind === "add_category" ? [a.name] : [])));
     addRules(actions.flatMap((a) => (a.kind === "add_rule" ? [a.rule] : [])));
     let chargesUpdated = 0;
-    for (const a of actions) if (a.kind === "set_month_category") chargesUpdated += setMonthCategory(proposal.month, a.merchant, a.category);
+    for (const a of actions) {
+      if (a.kind === "set_month_category") chargesUpdated += setMonthCategory(proposal.month, a.merchant, a.category);
+      if (a.kind === "set_charge_category") {
+        // The ids come from the request: only this merchant's charges on this statement may be touched.
+        const t = getTransaction(a.transactionId);
+        if (!t || t.billingMonth !== proposal.month || normalizeMerchant(t.merchant) !== normalizeMerchant(proposal.merchant)) {
+          throw new ValidationError(`${a.transactionId} is not a "${proposal.merchant}" charge on the ${proposal.month} statement`);
+        }
+        setChargeCategory(a.transactionId, a.category);
+        chargesUpdated++;
+      }
+    }
     appendMemory(actions.flatMap((a) => (a.kind === "add_memory" ? [a.note] : [])));
 
     if (answer.kind !== "skip") recordProposalAnswer(proposalId, STATUS[answer.kind], answer);

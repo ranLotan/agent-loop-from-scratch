@@ -18,7 +18,9 @@ export type Answer =
   | { kind: "skip" } //                               decide later
   | { kind: "new_category"; category: string } //    none of the categories fit; create this one
   | { kind: "once"; category: string } //             right for THIS month's charges only: no rule (M4)
-  | { kind: "by_hand" }; //                           never ask the agent about this merchant: I categorize each charge (M4)
+  | { kind: "by_hand" } //                            never ask the agent about this merchant: I categorize each charge (M4)
+  /** Each charge gets its own category (transaction id → category), e.g. BIT: one transfer is dinner, one is a gift. */
+  | { kind: "per_charge"; categories: Record<string, string>; byHand?: boolean };
 
 /** What to write. One answer can lead to several actions (e.g. a rule AND a note). */
 export type Action =
@@ -26,7 +28,9 @@ export type Action =
   | { kind: "add_rule"; rule: Rule }
   | { kind: "add_memory"; note: string }
   /** Give this statement month's charges from the merchant the category, as an approved-proposal edit (no rule). */
-  | { kind: "set_month_category"; merchant: string; category: string };
+  | { kind: "set_month_category"; merchant: string; category: string }
+  /** Your own category on one charge, like an edit on the Transactions page (beats any rule). */
+  | { kind: "set_charge_category"; transactionId: string; category: string };
 
 /**
  * The policy (the tests check each line):
@@ -45,6 +49,9 @@ export type Action =
  *      Careful: ruleFor checks rules.categories, which doesn't contain the new name yet.
  *   9. once → set_month_category (this statement month's charges, no rule) + a memory note. Unknown category → throw.
  *  10. by_hand → add_rule to MANUAL_CATEGORY (the merchant never reaches the agent again). Existing rule → nothing.
+ *  11. per_charge → set_charge_category for each charge (no rule: the merchant says nothing about what was bought)
+ *      + a memory note. With byHand, also the by-hand rule from 10. No charges, or an unknown category → throw.
+ *      decide() can't see the transactions, so applyAnswer checks the ids belong to this proposal.
  *
  * `today` is passed in (not new Date()) so tests get the same result every run.
  */
@@ -95,6 +102,17 @@ export function decide(p: CategoryProposal, answer: Answer, rules: RulesFile, to
     case "by_hand":
       // A rule to the by-hand bucket: code then keeps the merchant away from the agent for good.
       return ruleFor(MANUAL_CATEGORY, [...rules.categories, MANUAL_CATEGORY]);
+    case "per_charge": {
+      const entries = Object.entries(answer.categories);
+      if (!entries.length) throw new Error("per_charge needs at least one charge");
+      for (const [, category] of entries) if (!rules.categories.includes(category)) throw new Error(`Unknown category: ${category}`);
+      const used = [...new Set(entries.map(([, c]) => c))];
+      return [
+        ...entries.map(([transactionId, category]): Action => ({ kind: "set_charge_category", transactionId, category })),
+        note(`categorized charge by charge (no rule): ${used.join(", ")}`),
+        ...(answer.byHand ? ruleFor(MANUAL_CATEGORY, [...rules.categories, MANUAL_CATEGORY]) : []),
+      ];
+    }
     default: {
       const unreachable: never = answer; // compile error if a new Answer kind is added and not handled
       throw new Error(`Unknown answer: ${JSON.stringify(unreachable)}`);

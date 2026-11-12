@@ -30,7 +30,7 @@ export function realDeps(): Deps {
     // The real model, created on first use. The API key stays on the server.
     runAgent: (month) => runAgent({ month, client: getClient(), model: MODEL }),
     latestRun: store.latestRun,
-    listProposals: store.listProposals,
+    listProposals: store.listProposalsWithCharges,
     listFlags: store.listFlags,
     answerProposal: (id, answer) => applyAnswer(id, answer),
     answerFlag: (id, answer) => answerFlag(id, answer),

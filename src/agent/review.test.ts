@@ -114,3 +114,17 @@ test("10. by_hand → a rule to the by-hand bucket, so the merchant never reache
   ]);
   assert.deepEqual(decide(proposal("Netflix", "low"), { kind: "by_hand" }, rules, TODAY), [], "already has a rule");
 });
+
+test("11. per_charge → each charge its own category, no rule, a note; byHand adds the by-hand rule", () => {
+  const answer = { kind: "per_charge", categories: { b1: "שונות", b2: "רפואה ובריאות", b3: "שונות" } } as const;
+  assert.deepEqual(decide(proposal("BIT", "low", "שונות"), answer, rules, TODAY), [
+    { kind: "set_charge_category", transactionId: "b1", category: "שונות" },
+    { kind: "set_charge_category", transactionId: "b2", category: "רפואה ובריאות" },
+    { kind: "set_charge_category", transactionId: "b3", category: "שונות" },
+    { kind: "add_memory", note: "- 2026-10-28 | BIT | categorized charge by charge (no rule): שונות, רפואה ובריאות" },
+  ]);
+  const withBucket = decide(proposal("BIT", "low"), { ...answer, byHand: true }, rules, TODAY);
+  assert.deepEqual(withBucket.at(-1), { kind: "add_rule", rule: { merchant: "BIT", category: MANUAL_CATEGORY } });
+  assert.throws(() => decide(proposal("BIT", "low"), { kind: "per_charge", categories: {} }, rules, TODAY), /at least one/);
+  assert.throws(() => decide(proposal("BIT", "low"), { kind: "per_charge", categories: { b1: "nope" } }, rules, TODAY), /Unknown category/);
+});

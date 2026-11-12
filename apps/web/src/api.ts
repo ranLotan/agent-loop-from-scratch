@@ -5,7 +5,7 @@ import type { Job } from "../../api/src/jobs";
 import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
 import type { Answer } from "../../../src/agent/review";
 import type { AgentRunResult } from "../../../src/agent/service";
-import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
+import type { FlagRow, ProposalCharge, ProposalRow, ProposalWithCharges, RunRow } from "../../../src/db/proposals";
 import type { ImportBatch } from "../../../src/db/imports";
 import type { Occurrence, RecurringDefinition, RecurringSummary } from "../../../src/recurring";
 import type { CategoryRow, RuleRow } from "../../../src/db/rules";
@@ -170,7 +170,7 @@ export type ManualEntryInput = Pick<ManualEntry, "date" | "name" | "kind" | "amo
 /** A month's newest agent run, its proposals and flags. */
 export interface Review {
   run: RunRow | null;
-  proposals: ProposalRow[];
+  proposals: ProposalWithCharges[];
   flags: FlagRow[];
 }
-export type { AgentRunResult, Answer, AppliedAnswer, FlagAnswer, FlagRow, ProposalRow, RunRow };
+export type { AgentRunResult, Answer, AppliedAnswer, FlagAnswer, FlagRow, ProposalCharge, ProposalRow, ProposalWithCharges, RunRow };
