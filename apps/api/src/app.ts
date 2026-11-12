@@ -14,7 +14,9 @@ import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
 import type { Answer } from "../../../src/agent/review";
 import type { AgentRunResult } from "../../../src/agent/service";
 import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
+import type { DefinitionEdit, MonthChange, NewDefinition } from "../../../src/db/recurring";
 import type { FetchImport, StatementImport } from "../../../src/imports";
+import type { DefinitionChanges, Occurrence, RecurringDefinition, RecurringException, RecurringSummary } from "../../../src/recurring";
 import { isMonth } from "../../../src/normalize";
 import { summarize } from "../../../src/report";
 import type { CategorizedTransaction, RulesFile, Transaction } from "../../../src/types";
@@ -46,6 +48,21 @@ export interface Deps {
   listFlags(month: string): FlagRow[];
   answerProposal(id: number, answer: Answer): AppliedAnswer;
   answerFlag(id: number, answer: FlagAnswer): FlagRow;
+  // M5: recurring income and expenses
+  listRecurring(): RecurringDefinition[];
+  createRecurring(input: NewDefinition): RecurringDefinition;
+  updateRecurring(id: number, edit: DefinitionEdit): RecurringDefinition;
+  changeRecurringFrom(id: number, month: string, changes: DefinitionChanges): { ended: RecurringDefinition; created: RecurringDefinition };
+  deleteRecurring(id: number): void;
+  setRecurringMonth(id: number, month: string, change: MonthChange): RecurringException | null;
+  recurringMonth(month: string): { occurrences: Occurrence[]; summary: RecurringSummary };
+}
+
+/** Only the fields a client may set on a recurring item: never id or previousId. Types are checked in the core. */
+const RECURRING_FIELDS = ["name", "kind", "amount", "currency", "category", "dayOfMonth", "startMonth", "endMonth", "merchant", "tolerance"] as const;
+function recurringFields(body: unknown): Record<string, unknown> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(RECURRING_FIELDS.filter((k) => k in b).map((k) => [k, b[k] === "" ? null : b[k]]));
 }
 
 /** The answers decide() understands, checked before anything is written. */
@@ -370,6 +387,53 @@ export function createApp(deps: Deps) {
     } else {
       res.status(400).json({ error: 'Expected { kind: "ok" } or { kind: "note", text }' });
     }
+  });
+
+  // ---------- M5: recurring income and expenses ----------
+
+  app.get("/api/recurring", (_req, res) => {
+    res.json(deps.listRecurring());
+  });
+  app.post("/api/recurring", (req, res) => {
+    res.status(201).json(deps.createRecurring(recurringFields(req.body) as NewDefinition));
+  });
+  // Every month of the item (a correction, or { endMonth } to stop it).
+  app.patch("/api/recurring/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    res.json(deps.updateRecurring(id, recurringFields(req.body) as DefinitionEdit));
+  });
+  // From a month on: { month, ...changes }. Earlier months keep the old values.
+  app.post("/api/recurring/:id/change-from", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const month = id && requireMonth(req.body?.month, res);
+    if (!id || !month) return;
+    const { startMonth: _s, endMonth: _e, ...changes } = recurringFields(req.body);
+    res.json(deps.changeRecurringFrom(id, month, changes as DefinitionChanges));
+  });
+  app.delete("/api/recurring/:id", (req, res) => {
+    const id = idOf(req.params.id, res);
+    if (!id) return;
+    deps.deleteRecurring(id);
+    res.status(204).end();
+  });
+  // One month only: { amount?: number | null, skipped?: boolean, note?: string | null }
+  app.put("/api/recurring/:id/months/:month", (req, res) => {
+    const id = idOf(req.params.id, res);
+    const month = id && requireMonth(req.params.month, res);
+    if (!id || !month) return;
+    const { amount, skipped, note } = req.body ?? {};
+    if ((amount !== undefined && amount !== null && typeof amount !== "number") || (skipped !== undefined && typeof skipped !== "boolean") ||
+        (note !== undefined && note !== null && typeof note !== "string")) {
+      res.status(400).json({ error: "Expected { amount?: number | null, skipped?: boolean, note?: string | null }" });
+      return;
+    }
+    res.json({ exception: deps.setRecurringMonth(id, month, { amount, skipped, note }) });
+  });
+  app.get("/api/months/:month/recurring", (req, res) => {
+    const month = requireMonth(req.params.month, res);
+    if (!month) return;
+    res.json(deps.recurringMonth(month));
   });
 
   // Unknown /api paths get JSON, not Express's default HTML page.

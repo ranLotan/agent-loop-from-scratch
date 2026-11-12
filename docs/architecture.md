@@ -183,7 +183,7 @@ cal-expence-agent/
 - npm workspaces (`apps/web`, `apps/api`) + `concurrently` in the root: `npm run dev` → `vite` + `tsx watch apps/api/src/server.ts`.
 - `tsx watch` restarts the API whenever a file it imports changes, including files in `src/`. A scrape running at that moment is lost.
 
-### Database strategy (built in M2; recurring tables in M5)
+### Database strategy (built in M2–M5)
 
 Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 
@@ -196,8 +196,8 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 | `agent_runs` | One agent execution | `id`, `billing_month`, `model`, `stopped_by`, `iterations`, `input_tokens`, `output_tokens`, `created_at` | | SQLite |
 | `agent_proposals` | A proposed category | `id`, `run_id` → runs, `merchant`, `category`, `confidence`, `reason`, `new_category_idea`, `status` (pending/approved/changed/new_category/noted/skipped, plus `answered`: reviewed, how not recorded), `answer_json`, `answered_at` | `UNIQUE(run_id, normalized_merchant)` | SQLite (replaces `data/proposals/*.json` and its `reviewed[]`) |
 | `exception_flags` | A flag the agent raised | `id`, `run_id`, `transaction_id` → transactions, `severity`, `explanation`, `reasons_json`, `status` (pending/ok/noted) | `UNIQUE(run_id, transaction_id)` | SQLite |
-| `recurring_definitions` *(M5)* | Salary, rent, … | `id`, `name`, `kind` (income/expense), `amount`, `currency`, `category_id`, `schedule` (monthly day N), `start_month`, `end_month`, `match_merchant` | | SQLite |
-| `recurring_occurrences` *(M5)* | One expected instance | `id`, `definition_id`, `month`, `expected_amount`, `override_amount`, `matched_transaction_id`, `status` | `UNIQUE(definition_id, month)` | SQLite |
+| `recurring_definitions` (M5, migration 004) | Salary, rent, internet… | `id`, `name`, `kind` (income/expense), `amount`, `currency`, `category_id` → categories, `day_of_month`, `start_month`, `end_month` (inclusive, NULL = running), `merchant` + `normalized_merchant` (set = paid by card), `tolerance`, `previous_id` → the definition it continues | `end_month ≥ start_month`, `amount > 0` | SQLite |
+| `recurring_exceptions` (M5) | One month that differs | `definition_id` → definitions, `month`, `amount`, `skipped`, `note` | PK (`definition_id`, `month`), `ON DELETE CASCADE` | SQLite. **Months themselves aren't stored**: `occurrencesFor()` in `src/recurring.ts` computes them, and matches card-paid items to the statement |
 | Memory notes | Fuzzy context for the prompt | one line per note | | **Stays `data/memory.md`** |
 | Raw scraper output, failure screenshot | Debugging | | | **Stays files** (`data/raw/`) |
 | Reports | Markdown output | | | **Generated on demand** from `summarize()`. Files only for the CLI. |
@@ -205,7 +205,7 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 
 **Effective category** of a transaction (built in M3), computed in code and not stored twice: `category_override` → matching rule → Cal `sector` → null. Its **source** is `manual`/`agent` → `rule` → `cal` → none. This extends `categorize()`, which already returns `categorySource`.
 
-**Tables and their foreign keys** (as built; recurring tables come in M5):
+**Tables and their foreign keys** (as built in M2–M4; M5 adds `recurring_definitions` → `categories` and `recurring_exceptions` → `recurring_definitions`):
 
 ```mermaid
 erDiagram

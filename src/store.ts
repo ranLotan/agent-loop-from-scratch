@@ -9,7 +9,9 @@ import type { BatchInfo, ImportBatch, ImportResult } from "./db/imports";
 import { inTransaction, NotFoundError, openDb, ValidationError } from "./db/index";
 import * as proposalsDb from "./db/proposals";
 import { loadProposalsFile, saveProposalsFile, type RunMeta } from "./db/proposals";
+import * as recurringDb from "./db/recurring";
 import * as rulesDb from "./db/rules";
+import { occurrencesFor, summarizeRecurring, type DefinitionChanges, type Occurrence, type RecurringSummary } from "./recurring";
 import * as transactionsDb from "./db/transactions";
 import type { OverrideChange, StoredTransaction, TransactionSearch } from "./db/transactions";
 import type { Rule, RulesFile, Transaction } from "./types";
@@ -185,3 +187,21 @@ export const setMonthCategory = (month: string, merchant: string, category: stri
 
 /** Runs several store writes as one all-or-nothing change (applying one review answer). */
 export const asOneChange = <T>(work: () => T): T => inTransaction(db(), work);
+
+// ---------- Recurring income and expenses (M5) ----------
+
+export type { DefinitionEdit, MonthChange, NewDefinition } from "./db/recurring";
+
+export const listRecurring = () => recurringDb.listDefinitions(db());
+export const getRecurring = (id: number) => recurringDb.getDefinition(db(), id);
+export const createRecurring = (input: recurringDb.NewDefinition) => recurringDb.createDefinition(db(), input);
+export const updateRecurring = (id: number, edit: recurringDb.DefinitionEdit) => recurringDb.updateDefinition(db(), id, edit);
+export const changeRecurringFrom = (id: number, month: string, changes: DefinitionChanges) => recurringDb.changeFrom(db(), id, month, changes);
+export const deleteRecurring = (id: number) => recurringDb.deleteDefinition(db(), id);
+export const setRecurringMonth = (id: number, month: string, change: recurringDb.MonthChange) => recurringDb.setMonth(db(), id, month, change);
+
+/** A month's recurring items, matched against that month's card statement. */
+export function recurringMonth(month: string): { occurrences: Occurrence[]; summary: RecurringSummary } {
+  const occurrences = occurrencesFor(month, recurringDb.listDefinitions(db()), recurringDb.listExceptions(db()), loadTransactions(month) ?? []);
+  return { occurrences, summary: summarizeRecurring(occurrences) };
+}

@@ -33,5 +33,12 @@ export function realDeps(): Deps {
     listFlags: store.listFlags,
     answerProposal: (id, answer) => applyAnswer(id, answer),
     answerFlag: (id, answer) => answerFlag(id, answer),
+    listRecurring: store.listRecurring,
+    createRecurring: store.createRecurring,
+    updateRecurring: store.updateRecurring,
+    changeRecurringFrom: store.changeRecurringFrom,
+    deleteRecurring: store.deleteRecurring,
+    setRecurringMonth: store.setRecurringMonth,
+    recurringMonth: store.recurringMonth,
   };
 }

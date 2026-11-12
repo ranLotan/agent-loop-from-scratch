@@ -12,6 +12,7 @@ export function DashboardPage() {
   // Hooks before any early return: React matches them by call order on every render.
   const review = useApi(() => api.review(month), [month]);
   const categories = useApi(() => api.categories(), []);
+  const recurring = useApi(() => api.recurringMonth(month), [month]);
 
   if (error) return <p role="alert">Error: {error}</p>;
   if (loading || !data) return <p>Loading…</p>;
@@ -25,6 +26,10 @@ export function DashboardPage() {
   const byHandName = categories.data?.find((c) => c.system)?.name;
   const byHand = summary.byCategory.find((c) => c.category === byHandName)?.count ?? 0;
   const linkTo = (path: string, extra = "") => `${path}?month=${month}${extra}`;
+  // Outside the card: recurring items counted at their expected amount. Card-paid ones are already in ils.
+  const r = recurring.data;
+  const income = r?.summary.income.ILS ?? 0;
+  const outside = r?.summary.outsideExpenses.ILS ?? 0;
 
   return (
     <section>
@@ -48,6 +53,22 @@ export function DashboardPage() {
           {byHandName ? <Link to={linkTo("/transactions", `&category=${encodeURIComponent(byHandName)}`)}>{byHand}</Link> : byHand}
         </Stat>
       </div>
+
+      {r && r.occurrences.length > 0 && (
+        <>
+          <h2>Income and expenses</h2>
+          <div className="stats">
+            <Stat label="Income (recurring)">{formatMoney(income)}</Stat>
+            <Stat label="Card spending">{formatMoney(ils)}</Stat>
+            <Stat label="Outside the card (recurring)">{formatMoney(outside)}</Stat>
+            <Stat label="Left over">{formatDelta(income - ils - outside)}</Stat>
+          </div>
+          <p className="muted">
+            <Link to={linkTo("/recurring")}>Recurring items</Link>: {r.summary.paidByCard} paid by card
+            {r.summary.notSeen > 0 && `, ${r.summary.notSeen} not on the statement`}. Shekel amounts only.
+          </p>
+        </>
+      )}
 
       <p className="muted">
         Categories: {summary.bySource.manual > 0 && `${summary.bySource.manual} edited by you · `}

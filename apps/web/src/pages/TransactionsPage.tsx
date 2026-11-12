@@ -23,6 +23,15 @@ export function TransactionsPage() {
   const category = searchParams.get("category") ?? "";
   const source = searchParams.get("source") ?? "";
   const allMonths = searchParams.get("all") === "1";
+  const filtered = Boolean(q || category || source);
+  /** Back to this month, unfiltered (keeps ?month= and ?all=). */
+  function clearFilters() {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const key of ["q", "category", "source"]) next.delete(key);
+      return next;
+    });
+  }
   function setFilter(key: string, value: string) {
     // Copy, change one key, keep the rest (month included). `replace`: typing doesn't fill the back button.
     setSearchParams(
@@ -91,6 +100,14 @@ export function TransactionsPage() {
             {data.length} transaction{data.length === 1 ? "" : "s"}
             {loading && " · updating…"}
           </p>
+          {data.length === 0 && filtered && (
+            <p>
+              Nothing matches these filters.{" "}
+              <button type="button" className="link-button" onClick={clearFilters}>
+                Clear filters
+              </button>
+            </p>
+          )}
           <TransactionsTable
             transactions={data}
             showMonth={allMonths}

@@ -7,6 +7,7 @@ import type { Answer } from "../../../src/agent/review";
 import type { AgentRunResult } from "../../../src/agent/service";
 import type { FlagRow, ProposalRow, RunRow } from "../../../src/db/proposals";
 import type { ImportBatch } from "../../../src/db/imports";
+import type { Occurrence, RecurringDefinition, RecurringSummary } from "../../../src/recurring";
 import type { CategoryRow, RuleRow } from "../../../src/db/rules";
 import type { FetchImport, StatementImport } from "../../../src/imports";
 import type { Summary } from "../../../src/report";
@@ -110,6 +111,33 @@ export const api = {
   review: (month: string) => request<Review>(`/review?month=${month}`),
   answerProposal: (id: number, answer: Answer) => request<AppliedAnswer>(`/proposals/${id}/answer`, json("POST", answer)),
   answerFlag: (id: number, answer: FlagAnswer) => request<FlagRow>(`/flags/${id}/answer`, json("POST", answer)),
+
+  recurring: () => request<RecurringDefinition[]>("/recurring"),
+  recurringMonth: (month: string) => request<RecurringMonth>(`/months/${month}/recurring`),
+  createRecurring: (input: RecurringInput) => request<RecurringDefinition>("/recurring", json("POST", input)),
+  /** Every month of the item. { endMonth } stops it. */
+  updateRecurring: (id: number, edit: Partial<RecurringInput> & { endMonth?: string | null }) =>
+    request<RecurringDefinition>(`/recurring/${id}`, json("PATCH", edit)),
+  /** From `month` on; earlier months keep the old values. */
+  changeRecurringFrom: (id: number, month: string, changes: Partial<RecurringInput>) =>
+    request<{ ended: RecurringDefinition; created: RecurringDefinition }>(`/recurring/${id}/change-from`, json("POST", { month, ...changes })),
+  deleteRecurring: (id: number) => request<void>(`/recurring/${id}`, json("DELETE")),
+  /** One month only. { amount: null, skipped: false, note: null } = back to normal. */
+  setRecurringMonth: (id: number, month: string, change: { amount?: number | null; skipped?: boolean; note?: string | null }) =>
+    request<unknown>(`/recurring/${id}/months/${month}`, json("PUT", change)),
+};
+
+export type { Occurrence, RecurringDefinition, RecurringSummary };
+export interface RecurringMonth {
+  occurrences: Occurrence[];
+  summary: RecurringSummary;
+}
+/** What the forms send; "" for an optional text field means "none". */
+export type RecurringInput = Pick<RecurringDefinition, "name" | "kind" | "amount"> & {
+  startMonth?: string;
+  category?: string | null;
+  merchant?: string | null;
+  dayOfMonth?: number | null;
 };
 
 /** A month's newest agent run, its proposals and flags. */
