@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, type MonthLedger, type MonthStatus, type PieSlice } from "../api";
+import { api, type CapUsage, type LedgerSummary, type MonthLedger, type MonthStatus, type PieSlice } from "../api";
 import { PieChart, sliceColor } from "../components/PieChart";
-import { TrendChart } from "../components/TrendChart";
+import { Trends } from "../components/Trends";
 import { formatDelta, formatForeign, formatMoney } from "../format";
 import { useApi } from "../hooks/useApi";
 import { useSelectedMonth } from "../hooks/useSelectedMonth";
@@ -11,14 +11,13 @@ const UNCATEGORIZED = "Uncategorized"; // the core's bucket name for charges wit
 
 /**
  * "Did I spend more than I earned this month?" Everything here is by purchase month, and every number comes
- * finished from the server (monthLedger, ledgerTrend, monthStatus): this page only lays them out.
+ * finished from the server (monthLedger, ledgerTrend, categoryTrend, monthStatus): this page only lays them out.
  */
 export function DashboardPage() {
   const month = useSelectedMonth();
   // Hooks before any early return: React matches them by call order on every render.
   const ledger = useApi(() => api.ledger(month), [month]);
   const status = useApi(() => api.status(month), [month]);
-  const trend = useApi(() => api.trend(month, 6), [month]);
   const categories = useApi(() => api.categories(), []);
 
   const error = ledger.error ?? status.error;
@@ -32,47 +31,13 @@ export function DashboardPage() {
       <StatusStrip status={status.data} byHandName={byHandName} />
       <Hero ledger={ledger.data} />
 
-      <h2>Expenses by category</h2>
+      <div className="section-head">
+        <h2>Expenses by category</h2>
+        <CapChips caps={ledger.data.summary.caps} />
+      </div>
       <CategoryBreakdown ledger={ledger.data} />
 
-      <h2>Last 6 months</h2>
-      {trend.error && <p role="alert">Error: {trend.error}</p>}
-      {trend.data && (
-        <>
-          <p className="muted">
-            <span className="swatch" style={{ background: "var(--series-1)" }} />
-            Income <span className="swatch" style={{ background: "var(--series-2)", marginInlineStart: 12 }} />
-            Expenses · Net above each month{trend.data.some((p) => p.awaiting > 0) && " · * = items still waiting for confirmation"}
-          </p>
-          <TrendChart points={trend.data} current={month} />
-          <details>
-            <summary>As a table</summary>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th className="num">Income</th>
-                  <th className="num">Expenses</th>
-                  <th className="num">Net</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trend.data.map((p) => (
-                  <tr key={p.month}>
-                    <td className="num">{p.month}</td>
-                    <td className="num">{formatMoney(p.income)}</td>
-                    <td className="num">{formatMoney(p.expenses)}</td>
-                    <td className="num">
-                      {formatDelta(p.net)}
-                      {p.awaiting > 0 && <div className="sub">{p.awaiting} waiting</div>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        </>
-      )}
+      <Trends month={month} pie={ledger.data.summary.pie} />
     </section>
   );
 }
@@ -159,7 +124,7 @@ function CategoryBreakdown({ ledger }: { ledger: MonthLedger }) {
   const navigate = useNavigate();
   // Lifted state: the pie and the legend share which slice is hovered, so it lives in their common parent.
   const [hovered, setHovered] = useState<number | null>(null);
-  const { pie, byCategory, expenses } = ledger.summary;
+  const { pie, byCategory, expenses, caps } = ledger.summary;
   if (!pie.length) return <p className="muted">No expenses in {ledger.month}.</p>;
 
   /** Only card categories open Transactions. Other spans several; a manual-only one (rent) has no card rows. */
@@ -172,6 +137,10 @@ function CategoryBreakdown({ ledger }: { ledger: MonthLedger }) {
     return () => navigate(`/transactions?month=${ledger.month}&${filter}`);
   };
   const notInPie = byCategory.filter((c) => c.amount <= 0);
+  const usage = new Map(caps.usage.map((u) => [u.category, u]));
+  // Capped categories with nothing spent this month: not a slice, but their cap still deserves a row.
+  const unspent = caps.usage.filter((u) => !pie.some((s) => s.category === u.category) && !notInPie.some((c) => c.category === u.category));
+  const hasCaps = caps.usage.length > 0;
 
   return (
     <div className="chart-row">
@@ -180,6 +149,7 @@ function CategoryBreakdown({ ledger }: { ledger: MonthLedger }) {
         <thead>
           <tr>
             <th>Category</th>
+            {hasCaps && <th className="num">Cap</th>}
             <th className="num">Amount</th>
             <th className="num">Share</th>
           </tr>
@@ -187,17 +157,24 @@ function CategoryBreakdown({ ledger }: { ledger: MonthLedger }) {
         <tbody>
           {pie.map((slice, i) => {
             const select = onSelect(slice);
+            const u = usage.get(slice.category);
             return (
-              <tr key={slice.category} className={hovered === i ? "hovered" : ""} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
-                <td>
-                  {/* <bdi> isolates a Hebrew name, so the swatch stays on the left like in English rows. */}
+              <tr
+                key={slice.category}
+                className={[hovered === i ? "hovered" : "", u?.over ? "over-cap" : ""].join(" ")}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                {/* dir="auto": the first letter of the name decides. A Hebrew name reads right to left and sits on the
+                    right, swatch first (on its right side); an English name stays on the left. */}
+                <td dir="auto">
                   <span className="swatch" style={{ background: sliceColor(slice, i) }} />
                   {select ? (
                     <button type="button" className="link-button" onClick={select}>
-                      <bdi>{slice.category}</bdi>
+                      {slice.category}
                     </button>
                   ) : (
-                    <bdi>{slice.category}</bdi>
+                    slice.category
                   )}
                   {slice.grouped && (
                     <div className="sub" dir="auto">
@@ -205,28 +182,81 @@ function CategoryBreakdown({ ledger }: { ledger: MonthLedger }) {
                     </div>
                   )}
                 </td>
-                <td className="num">{formatMoney(slice.amount)}</td>
+                {hasCaps && <CapCell usage={u} />}
+                <td className={`num ${u?.over ? "bad strong" : ""}`}>{formatMoney(slice.amount)}</td>
                 <td className="num">{slice.percent}%</td>
               </tr>
             );
           })}
           {notInPie.map((c) => (
             <tr key={c.category}>
-              <td>
-                <bdi>{c.category}</bdi>
+              <td dir="auto">
+                {c.category}
                 <div className="sub">refunds: not a slice</div>
               </td>
+              {hasCaps && <CapCell usage={usage.get(c.category)} />}
               <td className="num">{formatMoney(c.amount)}</td>
+              <td className="num">—</td>
+            </tr>
+          ))}
+          {unspent.map((u) => (
+            <tr key={u.category}>
+              <td dir="auto">
+                {u.category}
+                <div className="sub">nothing spent yet</div>
+              </td>
+              <CapCell usage={u} />
+              <td className="num">{formatMoney(0)}</td>
               <td className="num">—</td>
             </tr>
           ))}
           <tr>
             <th>Total</th>
+            {hasCaps && <td className="num sub">{formatMoney(caps.total)} capped</td>}
             <th className="num">{formatMoney(expenses)}</th>
             <th />
           </tr>
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** "2 caps on track" · "1 cap exceeded", counted by the server. Nothing when no category has a cap. */
+function CapChips({ caps }: { caps: LedgerSummary["caps"] }) {
+  if (!caps.usage.length) return null;
+  const plural = (n: number) => (n === 1 ? "cap" : "caps");
+  return (
+    <div className="chips">
+      {caps.onTrack > 0 && <span className="chip good-chip">{caps.onTrack} {plural(caps.onTrack)} on track</span>}
+      {caps.exceeded > 0 && <span className="chip bad-chip">{caps.exceeded} {plural(caps.exceeded)} exceeded</span>}
+    </div>
+  );
+}
+
+/**
+ * The cap, green within it or red over it, with a bar of how much is used. The details show on hover AND keyboard
+ * focus: it's a <button> only so it can take focus (it does nothing on click), and the same words are its
+ * aria-label, so a screen reader doesn't depend on the visual tooltip. "—" for a category without a cap.
+ */
+function CapCell({ usage: u }: { usage?: CapUsage }) {
+  if (!u) return <td className="num muted">—</td>;
+  const left = u.over ? `Over by ${formatMoney(-u.remaining)}` : `${formatMoney(u.remaining)} left to spend`;
+  const spentOf = `Spent ${formatMoney(u.spent)} of ${formatMoney(u.cap)}`;
+  return (
+    <td className="num cap-cell">
+      <button type="button" className={`cap-button ${u.over ? "bad" : "good"}`} aria-label={`Cap ${formatMoney(u.cap)}. ${spentOf}. ${left}.`}>
+        <span className="strong">{formatMoney(u.cap)}</span>
+        <span className="cap-bar" aria-hidden>
+          {/* Width from the server's usedPercent; past 100 the bar is just full. Layout, not money math. */}
+          <span style={{ width: `${Math.min(100, Math.max(0, u.usedPercent))}%` }} />
+        </span>
+        <span className="cap-tip" aria-hidden>
+          <span className="muted">{spentOf}</span>
+          <br />
+          <span className="strong">{left}</span>
+        </span>
+      </button>
+    </td>
   );
 }

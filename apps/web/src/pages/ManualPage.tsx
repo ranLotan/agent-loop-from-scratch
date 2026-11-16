@@ -92,6 +92,7 @@ function RecurringTable(props: {
         <thead>
           <tr>
             <th>Item</th>
+            <th>Category</th>
             <th className="num">Amount</th>
             <th>Status</th>
             <th />
@@ -108,6 +109,7 @@ function RecurringTable(props: {
                   {o.name}
                   {o.expectedDate && <div className="sub">{o.expectedDate}</div>}
                 </td>
+                <td dir="auto">{o.category ?? "—"}</td>
                 <td className="num">
                   {o.status === "awaiting_confirmation" ? `~${formatMoney(o.suggestedAmount, o.currency)}` : formatMoney(o.expectedAmount, o.currency)}
                   {o.changed && o.status !== "awaiting_confirmation" && <div className="sub">changed for this month</div>}
@@ -265,6 +267,7 @@ function OtherMonths(props: { month: string; definitions: RecurringDefinition[];
                   {d.startMonth} → {d.endMonth ?? "ongoing"}
                 </div>
               </td>
+              <td dir="auto">{d.category ?? "—"}</td>
               <td className="num">{formatMoney(d.amount, d.currency)}</td>
               <td>
                 {editingId === d.id ? (
@@ -443,7 +446,7 @@ function OneTimeForm(props: {
       <select value={category} onChange={(e) => setCategory(e.target.value)} dir="auto">
         <option value="">No category</option>
         {props.categories.map((c) => (
-          <option key={c} value={c}>
+          <option key={c} value={c} dir="auto">
             {c}
           </option>
         ))}

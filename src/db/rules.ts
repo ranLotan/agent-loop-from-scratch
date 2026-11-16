@@ -14,7 +14,13 @@ export function formatRulesFile(file: RulesFile): string {
   const calRules = (file.calRules ?? [])
     .map((r) => `    { "sector": ${JSON.stringify(r.sector)}, "category": ${JSON.stringify(r.category)} }`)
     .join(",\n");
-  return `{\n  "categories": [\n${categories}\n  ],\n  "rules": [\n${rules}\n  ],\n  "calRules": [\n${calRules}\n  ]\n}\n`;
+  const caps = Object.entries(file.caps ?? {})
+    .map(([name, cap]) => `    ${JSON.stringify(name)}: ${cap}`)
+    .join(",\n");
+  return (
+    `{\n  "categories": [\n${categories}\n  ],\n  "rules": [\n${rules}\n  ],\n  "calRules": [\n${calRules}\n  ],\n` +
+    `  "caps": {\n${caps}\n  }\n}\n`
+  );
 }
 
 /** Categories and rules in the order they were added, like the old rules.json. */
@@ -83,6 +89,8 @@ export interface CategoryRow {
   rules: number;
   calRules: number;
   edits: number;
+  /** Monthly cap in ILS (M7); null = no cap. */
+  cap: number | null;
 }
 
 export function listRules(db: DatabaseSync): RuleRow[] {
@@ -134,7 +142,7 @@ export function deleteRule(db: DatabaseSync, id: number): void {
 export function listCategories(db: DatabaseSync): CategoryRow[] {
   return db
     .prepare(`
-      SELECT c.id, c.name, c.origin, c.system,
+      SELECT c.id, c.name, c.origin, c.system, c.monthly_cap,
         (SELECT COUNT(*) FROM merchant_rules r WHERE r.category_id = c.id) AS rules,
         (SELECT COUNT(*) FROM cal_rules k WHERE k.category_id = c.id) AS cal_rules,
         (SELECT COUNT(*) FROM transactions t WHERE t.category_override = c.name) AS edits
@@ -149,7 +157,40 @@ export function listCategories(db: DatabaseSync): CategoryRow[] {
       rules: Number(row.rules),
       calRules: Number(row.cal_rules),
       edits: Number(row.edits),
+      cap: row.monthly_cap === null ? null : Number(row.monthly_cap),
     }));
+}
+
+// ---------- Monthly caps (M7) ----------
+
+/** Every category that has a cap, by name: the input of capUsage() in src/caps.ts. */
+export function listCaps(db: DatabaseSync): { category: string; cap: number }[] {
+  return db
+    .prepare("SELECT name, monthly_cap FROM categories WHERE monthly_cap IS NOT NULL ORDER BY id")
+    .all()
+    .map((row) => ({ category: row.name as string, cap: Number(row.monthly_cap) }));
+}
+
+/**
+ * Sets or removes (null) the monthly cap of several categories, all or nothing. A cap must be a number above 0
+ * (the migration's CHECK says so too, but a clear message beats a constraint error), and the built-in by-hand
+ * bucket can't have one: it's a holding place, not spending I plan.
+ */
+export function setCaps(db: DatabaseSync, caps: { id: number; cap: number | null }[]): CategoryRow[] {
+  return inTransaction(db, () => {
+    const find = db.prepare("SELECT name, system FROM categories WHERE id = ?");
+    const update = db.prepare("UPDATE categories SET monthly_cap = ? WHERE id = ?");
+    for (const { id, cap } of caps) {
+      if (cap !== null && !(typeof cap === "number" && Number.isFinite(cap) && cap > 0)) {
+        throw new ValidationError(`A cap must be a number above 0, or empty for no cap (got ${String(cap)})`);
+      }
+      const category = find.get(id);
+      if (!category) throw new NotFoundError(`No category ${id}`);
+      if (category.system) throw new ConflictError(`"${category.name}" is built in and can't have a cap`);
+      update.run(cap === null ? null : Math.round(cap * 100) / 100, id);
+    }
+    return listCategories(db);
+  });
 }
 
 function requireCategoryName(name: string): string {

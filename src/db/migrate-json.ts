@@ -12,7 +12,7 @@ import type { RulesFile, Transaction } from "../types";
 import { importBatch } from "./imports";
 import { inTransaction } from "./index";
 import { saveProposalsFile } from "./proposals";
-import { addCategories, addRules, loadRules, setCalRule } from "./rules";
+import { addCategories, addRules, listCategories, loadRules, setCalRule, setCaps } from "./rules";
 import { loadTransactions } from "./transactions";
 
 export interface MonthResult {
@@ -69,6 +69,13 @@ export function migrateJson(db: DatabaseSync, dataDir: string): MigrationResult 
       // Cal rules from a rules.json backup; a sector already mapped in the database keeps its mapping.
       const mapped = new Set((loadRules(db).calRules ?? []).map((r) => r.sector));
       for (const r of rules.calRules ?? []) if (!mapped.has(r.sector)) setCalRule(db, r.sector, r.category);
+      // Caps from a rules.json backup (M7); a category that already has a cap keeps it.
+      const current = listCategories(db);
+      const caps = Object.entries(rules.caps ?? {}).flatMap(([name, cap]) => {
+        const category = current.find((c) => c.name === name && c.cap === null && !c.system);
+        return category ? [{ id: category.id, cap }] : [];
+      });
+      if (caps.length) setCaps(db, caps);
     }
 
     // 2. Transactions, with ids recalculated by the new scheme. Old → new is kept for the flags below.

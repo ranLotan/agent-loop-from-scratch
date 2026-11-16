@@ -1,6 +1,7 @@
 // The ledger (M6): money by the month it was spent in, not the month the card billed it.
 // Pure code. Why these rules: see "Findings" in docs/milestones/milestone-6.md (step 6.1).
 
+import { capUsage, summarizeCaps, type CapsSummary, type CategoryCap } from "./caps";
 import type { ImportBatch } from "./db/imports";
 import type { ManualEntry } from "./db/manual";
 import { round2, shiftMonth } from "./normalize";
@@ -88,13 +89,23 @@ export const OTHER = "Other";
  * Expenses by category as pie slices. Only positive amounts (a category that refunds made ≤ 0 can't be a
  * slice). With more than maxSlices + 1 categories, the biggest maxSlices keep their slice and the rest
  * become one "Other" (an Other holding a single category would just be that category under another name).
+ * A `capped` category always keeps its own slice (M7): its cap is shown on its row, so it can't hide in Other.
+ * Capped ones take their slots first; the biggest uncapped ones fill what's left of maxSlices.
  */
-export function pieSlices(byCategory: { category: string; amount: number }[], maxSlices = 6): PieSlice[] {
+export function pieSlices(byCategory: { category: string; amount: number }[], maxSlices = 6, capped: string[] = []): PieSlice[] {
   const positive = byCategory.filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category));
   const total = positive.reduce((sum, c) => sum + c.amount, 0);
   if (total === 0) return [];
-  const kept = positive.length > maxSlices + 1 ? positive.slice(0, maxSlices) : positive;
-  const rest = positive.slice(kept.length);
+  const isCapped = new Set(capped);
+  let keep = new Set(positive.map((c) => c.category));
+  if (positive.length > maxSlices + 1) {
+    const cappedHere = positive.filter((c) => isCapped.has(c.category));
+    const room = Math.max(0, maxSlices - cappedHere.length);
+    keep = new Set([...cappedHere, ...positive.filter((c) => !isCapped.has(c.category)).slice(0, room)].map((c) => c.category));
+    if (positive.length - keep.size === 1) keep = new Set(positive.map((c) => c.category)); // no Other of one
+  }
+  const kept = positive.filter((c) => keep.has(c.category)); // still biggest first
+  const rest = positive.filter((c) => !keep.has(c.category));
   const slices: Omit<PieSlice, "percent">[] = kept.map((c) => ({ category: c.category, amount: round2(c.amount) }));
   if (rest.length) {
     slices.push({ category: OTHER, amount: round2(rest.reduce((s, c) => s + c.amount, 0)), grouped: rest.map((c) => c.category) });
@@ -122,10 +133,15 @@ export interface LedgerSummary {
   pie: PieSlice[];
   /** Counted entries in another currency: left out of the shekel totals (Net is ILS only). */
   otherCurrencies: { count: number; totals: Record<string, number> };
+  /** Spent vs cap for every capped category (M7), from `byCategory`. */
+  caps: CapsSummary;
 }
 
-/** The month's totals. Only counted shekel entries are added up; everything else is reported beside them. */
-export function summarizeLedger(entries: LedgerEntry[]): LedgerSummary {
+/**
+ * The month's totals. Only counted shekel entries are added up; everything else is reported beside them.
+ * `caps` (M7) adds spent vs cap per capped category, and keeps those categories out of the pie's Other.
+ */
+export function summarizeLedger(entries: LedgerEntry[], caps: CategoryCap[] = []): LedgerSummary {
   let income = 0;
   let expenses = 0;
   const awaiting = { count: 0, expectedIncome: 0, expectedExpenses: 0 };
@@ -170,8 +186,9 @@ export function summarizeLedger(entries: LedgerEntry[]): LedgerSummary {
     awaiting: { count: awaiting.count, expectedIncome: round2(awaiting.expectedIncome), expectedExpenses: round2(awaiting.expectedExpenses) },
     pendingCard: { count: pendingCard.count, amount: round2(pendingCard.amount) },
     byCategory,
-    pie: pieSlices(byCategory),
+    pie: pieSlices(byCategory, 6, caps.map((c) => c.category)),
     otherCurrencies,
+    caps: summarizeCaps(capUsage(byCategory, caps)),
   };
 }
 

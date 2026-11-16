@@ -6,7 +6,7 @@ import type { Transaction } from "./types";
 
 process.env.DB_PATH = ":memory:"; // before store.ts opens the database
 const store = await import("./store");
-const { ledgerTrend, monthLedger, monthStatus } = await import("./ledger-service");
+const { categoryTrendFor, ledgerTrend, monthLedger, monthStatus } = await import("./ledger-service");
 
 const tx = (id: string, date: string, merchant: string, amount: number, over: Partial<Transaction> = {}): Transaction => ({
   id, date, merchant, amount, currency: "ILS", source: "scraper", ...over,
@@ -62,10 +62,25 @@ test("pending charges count in their purchase month", () => {
 });
 
 test("trend: n months ending with the given one, oldest first", () => {
-  const trend = ledgerTrend("2026-10", 3);
+  const { points: trend, totals } = ledgerTrend("2026-10", 3);
   assert.deepEqual(trend.map((p) => p.month), ["2026-08", "2026-09", "2026-10"]);
   assert.equal(trend[1].net, 15086.5);
   assert.equal(trend[2].awaiting, 1, "October's gas bill is still waiting");
+  assert.equal(totals.months, 3);
+  assert.equal(totals.income, trend.reduce((sum, p) => sum + p.income, 0));
+});
+
+test("caps (M7): monthLedger reports spent vs cap; the category trend uses the same numbers", () => {
+  const food = store.listCategories().find((c) => c.name === "מזון")!;
+  store.setCaps([{ id: food.id, cap: 600 }]);
+  const usage = monthLedger("2026-09").summary.caps.usage;
+  assert.deepEqual(usage.map((u) => [u.category, u.spent, u.remaining, u.over]), [["מזון", 700, -100, true]]);
+
+  const t = categoryTrendFor("2026-10", 2, null);
+  assert.deepEqual(t.categories.map((c) => c.category), ["מזון"], "default: the capped categories");
+  assert.deepEqual(t.rows.map((r) => [r.month, r.amounts["מזון"], r.over]), [["2026-09", 700, ["מזון"]], ["2026-10", 55, []]]);
+  assert.deepEqual([t.single?.capTotal, t.single?.expenses, t.single?.monthsOver], [1200, 755, ["2026-09"]]);
+  store.setCaps([{ id: food.id, cap: null }]);
 });
 
 test("month status: card data, review and manual steps, and the next step to do", () => {

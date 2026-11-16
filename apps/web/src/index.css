@@ -1,11 +1,20 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, "Segoe UI", Arial, sans-serif;
+  /* Inter first (Latin and ₪), Heebo for Hebrew, then system fonts. SVG text inherits this. */
+  font-family: Inter, Heebo, system-ui, "Segoe UI", Arial, sans-serif;
   line-height: 1.5;
 }
 
 body {
   margin: 0;
+}
+
+/* Form controls don't inherit the page font by default, so ₪ in a button or input would fall back again. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .layout {
@@ -19,7 +28,14 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 24px;
-  padding-bottom: 12px;
+  /* Sticky, not fixed: it stays in the page flow (no spacer needed) and pins to the top once you scroll past it.
+     It needs its own background, or the page would show through. z-index keeps it above the cap tooltips (5). */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-top: -16px; /* cancel .layout's top padding, so nothing scrolls by above the bar */
+  padding: 16px 0 12px;
+  background: Canvas;
   border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
 }
 
@@ -152,6 +168,13 @@ form,
 .sub {
   font-size: 0.8rem;
   opacity: 0.6;
+}
+
+/* My own description under a transaction's merchant name: small like .sub, but blue instead of dimmed text,
+   so it doesn't look like the gray "payment 2 of 3" line. */
+.description-note {
+  font-size: 0.8rem;
+  color: var(--series-1);
 }
 
 .link-button {
@@ -342,4 +365,453 @@ form,
 .charges caption {
   text-align: start;
   font-size: 0.85rem;
+}
+
+/* ---------- M7: caps ----------
+   Status colors for cap usage are the same tokens as Net (green = within, red = over). Color is never alone:
+   every cap state also says "left" or "over" in words. */
+.good {
+  color: var(--net-good);
+}
+
+.bad {
+  color: var(--net-bad);
+}
+
+button.primary {
+  background: var(--series-1);
+  border: 1px solid var(--series-1);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+/* Rules page sections: native <details>, styled like cards. */
+.accordion {
+  margin: 12px 0;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 10px;
+}
+
+.accordion > summary {
+  list-style: none; /* hide the default triangle: our own chevron turns instead */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 44px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion > summary:hover {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.accordion > summary:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.chevron {
+  opacity: 0.6;
+  font-size: 0.8em;
+  transition: transform 0.15s;
+}
+
+.accordion[open] > summary .chevron {
+  transform: rotate(90deg);
+}
+
+.accordion-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.accordion-meta {
+  margin-inline-start: auto;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.accordion-body {
+  padding: 0 16px 16px;
+  overflow-x: auto;
+}
+
+.cap-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cap-input span {
+  opacity: 0.7;
+}
+
+.cap-input input {
+  width: 100px;
+  padding: 4px 8px;
+  text-align: end;
+}
+
+.cap-input input[aria-invalid="true"] {
+  outline: 2px solid var(--net-bad);
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.good-chip {
+  color: var(--net-good);
+  background: color-mix(in srgb, var(--net-good) 14%, transparent);
+}
+
+.bad-chip {
+  color: var(--net-bad);
+  background: color-mix(in srgb, var(--net-bad) 14%, transparent);
+}
+
+.legend tr.over-cap {
+  background: color-mix(in srgb, var(--net-bad) 7%, transparent);
+}
+
+/* The dashboard's Cap cell: a focusable button whose tooltip shows on hover and on keyboard focus. */
+.cap-cell {
+  padding-block: 2px;
+}
+
+.cap-button {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 6px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.cap-button.good {
+  color: var(--net-good);
+}
+
+.cap-button.bad {
+  color: var(--net-bad);
+}
+
+.cap-button:hover,
+.cap-button:focus-visible {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  outline: none;
+}
+
+.cap-button:focus-visible {
+  box-shadow: 0 0 0 2px var(--series-1);
+}
+
+.cap-bar {
+  display: block;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, CanvasText 15%, transparent);
+  overflow: hidden;
+}
+
+.cap-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.cap-tip {
+  display: none;
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  white-space: nowrap;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  background: Canvas;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: start;
+}
+
+.cap-tip .muted {
+  color: CanvasText;
+}
+
+.cap-button:hover .cap-tip,
+.cap-button:focus-visible .cap-tip {
+  display: block;
+}
+
+/* ---------- M7: trends ---------- */
+:root {
+  --cap-fill: color-mix(in srgb, CanvasText 10%, Canvas);
+}
+
+.segmented {
+  display: inline-flex;
+}
+
+.segmented button {
+  min-width: 48px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-inline-start: none;
+}
+
+.segmented button:first-child {
+  border-start-start-radius: 8px;
+  border-end-start-radius: 8px;
+}
+
+.segmented button:last-child {
+  border-start-end-radius: 8px;
+  border-end-end-radius: 8px;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.trend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 16px 24px;
+}
+
+.trend-row .trend {
+  flex: 0 1 640px;
+  min-width: 0;
+}
+
+.summary-card {
+  flex: 1 1 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.summary-card hr {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.summary-label {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.summary-big {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.total-row th,
+.total-row td {
+  /* CanvasText, not currentColor: a red or green total must not tint its own cell. */
+  background: color-mix(in srgb, CanvasText 5%, transparent);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 14px;
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 12px;
+}
+
+.filter-chip {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  padding: 2px 4px 2px 12px;
+}
+
+.filter-chip .swatch {
+  margin: 0;
+}
+
+.filter-chip button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.filter-chip button:hover,
+.filter-chip button:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.add-chip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: 999px;
+  /* Canvas/CanvasText, not "none"/"inherit": the open list is drawn by the OS, and with a transparent
+     background Chrome on Windows paints it white while the text stays light (white on white in dark mode). */
+  background: Canvas;
+  color: CanvasText;
+  cursor: pointer;
+}
+
+.add-chip option {
+  background: Canvas;
+  color: CanvasText;
+}
+
+/* "All categories": an on/off chip, pressed = everything shown. Same pressed look as the period switch. */
+.toggle-chip {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.toggle-chip:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.toggle-chip[aria-pressed="true"] {
+  background: var(--series-1);
+  border-color: var(--series-1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.toggle-chip:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.cap-swatch {
+  background: var(--cap-fill);
+  outline: 1.5px solid color-mix(in srgb, CanvasText 45%, transparent);
+  outline-offset: -1.5px;
+}
+
+.trend rect.over {
+  stroke: var(--net-bad);
+  stroke-width: 2;
+}
+
+.trend rect.cap-bar-mark {
+  stroke: color-mix(in srgb, CanvasText 45%, transparent);
+  stroke-width: 1.5;
+}
+
+.trend text.bad-text {
+  fill: var(--net-bad);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

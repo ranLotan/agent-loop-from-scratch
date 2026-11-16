@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rules and caps</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Heebo:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#161616}
+a{color:#93c5fd}a:hover{color:#bfdbfe}
+details.acc{background:#1c1c1c;border:1px solid #2c2c2c;border-radius:12px}
+details.acc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 20px;min-height:44px;box-sizing:border-box}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary .chev{transition:transform .15s;color:#a3a3a3}
+details.acc[open]>summary .chev{transform:rotate(90deg)}
+details.acc>summary:hover{background:#222}
+td,th{border-bottom:1px solid #2c2c2c;padding:10px 12px;text-align:left}
+th{font-weight:700;font-size:13px;color:#d4d4d4}
+input.cap{width:110px;background:#121212;border:1px solid #3a3a3a;border-radius:8px;color:#e6e6e6;font:inherit;font-size:14px;padding:8px 10px;min-height:40px;box-sizing:border-box;text-align:right}
+input.cap::placeholder{color:#737373}
+.btn{background:#262626;border:1px solid #3a3a3a;color:#e6e6e6;border-radius:8px;font:inherit;font-size:14px;min-height:40px;padding:0 14px;cursor:pointer}
+.btn:hover{background:#303030}
+</style>
+</head>
+<body>
+<div style="box-sizing: border-box; min-height: 960px; background: #161616; color: #e6e6e6; font-family: Inter, Heebo, system-ui, sans-serif; padding: 40px 48px">
+<div style="max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px">
+<h2 style="margin: 0; font-size: 26px; font-weight: 700">Rules</h2>
+<div style="display: flex; gap: 8px"><button class="btn">Expand all</button><button class="btn">Collapse all</button></div>
+</div>
+
+<details class="acc" open>
+<summary><span class="chev" aria-hidden="true">▶</span><span style="font-size: 18px; font-weight: 700">Categories &amp; monthly caps</span><span style="margin-left: auto; font-size: 13px; color: #a3a3a3">3 of 12 capped</span></summary>
+<div style="padding: 0 20px 20px; display: flex; flex-direction: column; gap: 12px">
+<p style="margin: 0; font-size: 14px; color: #a3a3a3">Leave the cap empty for no cap. Caps are per month, in ₪.</p>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 15px">
+<thead><tr><th>Category</th><th>Monthly cap</th><th>This month</th><th></th></tr></thead>
+<tbody>
+<tr><td dir="auto">מזון וקניות בסופר</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" value="1,000" aria-label="Cap for מזון וקניות בסופר"></label></td><td style="color: #4ade80">₪426.72 · ₪573.28 left</td><td style="text-align: right"><button class="btn">Remove cap</button></td></tr>
+<tr><td dir="auto">ילדים – פנאי וציוד</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" value="1,500" aria-label="Cap for ילדים – פנאי וציוד"></label></td><td style="color: #f87171">₪1,856.00 · ₪356.00 over</td><td style="text-align: right"><button class="btn">Remove cap</button></td></tr>
+<tr><td dir="auto">חשבונות</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" value="1,200" aria-label="Cap for חשבונות"></label></td><td style="color: #4ade80">₪990.99 · ₪209.01 left</td><td style="text-align: right"><button class="btn">Remove cap</button></td></tr>
+<tr><td dir="auto">דיור</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" placeholder="No cap" aria-label="Cap for דיור"></label></td><td style="color: #a3a3a3">₪8,200.00</td><td></td></tr>
+<tr><td dir="auto">ילדים – מסגרות וחינוך</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" placeholder="No cap" aria-label="Cap for ילדים – מסגרות וחינוך"></label></td><td style="color: #a3a3a3">₪4,309.90</td><td></td></tr>
+<tr><td dir="auto">דיור ואחזקת בית</td><td><label style="display: inline-flex; align-items: center; gap: 6px"><span style="color: #a3a3a3">₪</span><input class="cap" placeholder="No cap" aria-label="Cap for דיור ואחזקת בית"></label></td><td style="color: #a3a3a3">₪777.90</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap"><button class="btn" style="background: #3a86e8; border-color: #3a86e8; color: #ffffff; font-weight: 600">Save caps</button><button class="btn">+ New category</button></div>
+</div>
+</details>
+
+<details class="acc">
+<summary><span class="chev" aria-hidden="true">▶</span><span style="font-size: 18px; font-weight: 700">Merchant rules</span><span style="margin-left: auto; font-size: 13px; color: #a3a3a3">merchant → category</span></summary>
+<div style="padding: 0 20px 20px; color: #a3a3a3">The existing rules table goes here, unchanged.</div>
+</details>
+
+<details class="acc">
+<summary><span class="chev" aria-hidden="true">▶</span><span style="font-size: 18px; font-weight: 700">Add a rule</span><span style="margin-left: auto; font-size: 13px; color: #a3a3a3">existing form</span></summary>
+<div style="padding: 0 20px 20px; color: #a3a3a3">The existing add-rule form goes here, unchanged.</div>
+</details>
+
+<p style="margin: 0; font-size: 13px; color: #a3a3a3">Open/closed state of each section is remembered per browser. Native &lt;details&gt;/&lt;summary&gt;, no library.</p>
+</div>
+</div>
+</body>
+</html>

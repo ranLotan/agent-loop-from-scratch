@@ -58,7 +58,7 @@ export function RecurringForm({ initial, categories, submitLabel, askStartMonth,
       <select value={category} onChange={(e) => setCategory(e.target.value)} dir="auto">
         <option value="">No category</option>
         {categories.map((c) => (
-          <option key={c} value={c}>
+          <option key={c} value={c} dir="auto">
             {c}
           </option>
         ))}

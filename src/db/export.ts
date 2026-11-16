@@ -3,10 +3,10 @@
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DATA_DIR, loadRules } from "../store";
+import { DATA_DIR, listCaps, loadRules } from "../store";
 import { formatRulesFile } from "./rules";
 
-const rules = loadRules();
+const rules = { ...loadRules(), caps: Object.fromEntries(listCaps().map((c) => [c.category, c.cap])) };
 const path = join(DATA_DIR, "rules.json");
 writeFileSync(path, formatRulesFile(rules), "utf8");
-console.log(`Exported ${rules.categories.length} categories and ${rules.rules.length} rules → ${path}`);
+console.log(`Exported ${rules.categories.length} categories, ${rules.rules.length} rules and ${Object.keys(rules.caps).length} caps → ${path}`);

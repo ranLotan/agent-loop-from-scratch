@@ -52,7 +52,7 @@ export function EditTransactionForm({ transaction: t, categories, byHandCategory
         <select value={category} onChange={(e) => setCategory(e.target.value)} dir="auto">
           <option value="">No edit: use the rule or Cal rule</option>
           {categories.map((name) => (
-            <option key={name} value={name}>
+            <option key={name} value={name} dir="auto">
               {name}
               {name === byHandCategory ? " (by hand)" : ""}
             </option>

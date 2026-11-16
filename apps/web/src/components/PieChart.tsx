@@ -1,7 +1,13 @@
 import type { PieSlice } from "../api";
+import { OTHER_COLOR, PALETTE_SIZE } from "../chart-colors";
 
-/** Colors by position: slices come biggest first from the server, and "Other" (if any) is always last and gray. */
-export const sliceColor = (slice: PieSlice, index: number) => (slice.grouped ? "var(--series-other)" : `var(--series-${index + 1})`);
+/**
+ * Colors by position: slices come biggest first from the server, and "Other" (if any) is always last and gray.
+ * Only with more than 6 capped categories can there be more own slices than colors (M7: a capped category is never
+ * folded into Other); those extra slices are gray too, and the legend table names each of them.
+ */
+export const sliceColor = (slice: PieSlice, index: number) =>
+  slice.grouped || index >= PALETTE_SIZE ? OTHER_COLOR : `var(--series-${index + 1})`;
 
 interface PieChartProps {
   slices: PieSlice[];

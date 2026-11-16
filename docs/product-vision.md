@@ -34,6 +34,8 @@ Each transaction shows **how it was categorized**: Rule, Cal sector, Agent (appr
 - Everything runs locally: Vite dev server + Express API on loopback + SQLite file.
 - The existing CLI, agent, approval policy and evals are preserved and reused.
 
+**Monthly caps (M7):** a category can have a monthly cap in ₪. The dashboard shows spent vs cap per category (left to spend, or over by), the period trend per category, and the Rules page sets the caps. Caps are limits I check against, not a budget plan: there is no forecasting.
+
 **Income:** the card statement has no income. It comes only from manual transactions: recurring items (M5) and one-time entries (M6). Bank statements stay manual (no automatic bank import). Net is in shekels only.
 
 ## Explicitly excluded
@@ -42,4 +44,4 @@ Each transaction shows **how it was categorized**: Rule, Cal sector, Agent (appr
 - Mobile apps
 - Commercial SaaS concerns (billing, tenancy, analytics)
 - Open Banking integration
-- Budgets, forecasting and investment tracking (not planned. Could be revisited later.)
+- Forecasting, budget planning and investment tracking (not planned. Could be revisited later.) Monthly caps per category are in scope since M7.

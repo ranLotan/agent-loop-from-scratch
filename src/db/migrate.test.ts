@@ -8,6 +8,7 @@ import { assignIds } from "../normalize";
 import type { Transaction } from "../types";
 import { openDb } from "./index";
 import { migrateJson } from "./migrate-json";
+import { addCategories, listCaps, listCategories, setCaps } from "./rules";
 import { loadTransactions } from "./transactions";
 
 // A fake data/ folder with the real bug in it: two payments of one purchase that had the same old id.
@@ -75,6 +76,20 @@ test("without rules.json (a fresh clone), the example file seeds the categories"
     assert.deepEqual([r.categoriesAdded, r.rulesAdded], [1, 1]);
   } finally {
     rmSync(freshDir, { recursive: true, force: true });
+  }
+});
+
+test("caps from a rules.json backup are restored; a category that already has a cap keeps it (M7)", () => {
+  const capsDir = mkdtempSync(join(tmpdir(), "cal-migrate-caps-"));
+  try {
+    writeFileSync(join(capsDir, "rules.json"), JSON.stringify({ categories: ["food", "kids"], rules: [], caps: { food: 1000, kids: 1500, gone: 5 } }));
+    const db = openDb(":memory:");
+    addCategories(db, ["kids"], "owner");
+    setCaps(db, listCategories(db).filter((c) => c.name === "kids").map((c) => ({ id: c.id, cap: 900 })));
+    migrateJson(db, capsDir);
+    assert.deepEqual(listCaps(db), [{ category: "kids", cap: 900 }, { category: "food", cap: 1000 }], "unknown 'gone' is ignored");
+  } finally {
+    rmSync(capsDir, { recursive: true, force: true });
   }
 });
 

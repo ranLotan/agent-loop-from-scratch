@@ -81,7 +81,7 @@ export function TransactionsPage() {
         <select value={category} onChange={(e) => setFilter("category", e.target.value)} dir="auto">
           <option value="">Any category</option>
           {categoryNames.map((name) => (
-            <option key={name} value={name}>
+            <option key={name} value={name} dir="auto">
               {name}
             </option>
           ))}

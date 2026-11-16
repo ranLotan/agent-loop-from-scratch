@@ -4,14 +4,16 @@ import assert from "node:assert/strict";
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
+import type { LedgerTrend, MonthLedger, MonthStatus } from "../../../src/ledger-service";
 import { createApp, type Deps } from "./app";
 
 const calls: string[] = [];
 const ledger = { month: "2026-09", entries: [], summary: { net: 123 } } as unknown as MonthLedger;
 const deps: Partial<Deps> = {
   monthLedger: (month) => (calls.push(`ledger ${month}`), ledger),
-  ledgerTrend: (end, n) => (calls.push(`trend ${end} ${n}`), [{ month: end, income: 1, expenses: 2, net: -1, awaiting: 0 }] as TrendPoint[]),
+  ledgerTrend: (end, n) => (
+    calls.push(`trend ${end} ${n}`), { points: [{ month: end, income: 1, expenses: 2, net: -1, awaiting: 0 }], totals: { net: -1 } } as LedgerTrend
+  ),
   monthStatus: (month) => (calls.push(`status ${month}`), { month, next: "review" } as MonthStatus),
 };
 
@@ -44,7 +46,8 @@ test("ledger: the core's result as JSON; a bad month is a 400 and never reaches 
 
 test("trend: n defaults to 6 and must be 1–24; end is required", async () => {
   assert.equal((await get("/api/ledger/trend?end=2026-10")).status, 200);
-  assert.equal((await get("/api/ledger/trend?end=2026-10&n=12")).body[0].net, -1);
+  const { body } = await get("/api/ledger/trend?end=2026-10&n=12");
+  assert.deepEqual([body.points[0].net, body.totals.net], [-1, -1], "points and the period totals");
   for (const bad of ["/api/ledger/trend", "/api/ledger/trend?end=2026-10&n=0", "/api/ledger/trend?end=2026-10&n=25", "/api/ledger/trend?end=2026-10&n=2.5"]) {
     assert.equal((await get(bad)).status, 400, bad);
   }

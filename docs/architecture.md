@@ -122,6 +122,7 @@ cal-expence-agent/
   - Built: `GET /api/months`, `GET /api/months/:month/summary` (`summarize()` + the previous month), `GET /api/months/:month/transactions`
   - Built: `GET /api/imports`, `POST /api/imports?name=&month=` (the file is the raw `application/octet-stream` body, no multipart library), `POST /api/scrape {month}` → `202 {jobId}`, `GET /api/jobs/:id`
   - Built (M3): `GET /api/transactions?from=&to=&q=&category=&source=&currency=` (across months), `PATCH /api/transactions/:id {category, description, createRule}`, `/api/rules` and `/api/categories` (GET, POST, PATCH, DELETE). Typed core errors map to 400/404/409.
+  - Built (M7): `PUT /api/categories/caps {caps: [{id, cap}]}` (cap null = none), `GET /api/ledger/trend?end=&n=` → `{points, totals}`, `GET /api/ledger/category-trend?end=&n=&cat=…` (no `cat` = the capped categories; an empty `cat=` = none). `GET /api/months/:month/ledger` carries `summary.caps`.
   - Built (M4): `POST /api/agent-runs {month}` → 202 job id, `GET /api/review?month=` (the newest run, its proposals and flags), `POST /api/proposals/:id/answer {kind, category?, text?}`, `POST /api/flags/:id/answer {kind: ok|note}`
 
 ### 2. How the agent is invoked (built in M4)
@@ -162,6 +163,7 @@ cal-expence-agent/
 - The approval policy has a single source: `decide()` in `src/agent/review.ts`. The dashboard's Approve button and the CLI `approve` both call one `applyAnswer()` that runs `decide()` and writes the resulting actions.
 - The UI never re-implements totals or category priority. It displays what the API returns.
 - **The ledger (M6)** has one source: `src/ledger.ts` (pure: `ledgerMonth`, `buildLedger`, `summarizeLedger`, `pieSlices`, `cardState`) and `src/ledger-service.ts` (`monthLedger`, `ledgerTrend`, `monthStatus`, which read through `store.ts`). The dashboard gets Income, Expenses, Net, the pie slices with their percentages, and the "next step" finished; it only turns percentages into SVG geometry. Card-paid recurring items are never ledger entries (their card charge is), and only counted shekel entries are added up.
+- **Caps and trends (M7)** come from the same ledger: `src/caps.ts` (`capUsage`, `summarizeCaps`: spent vs cap from `summary.byCategory`, so a cap counts exactly what the pie shows) and `src/trends.ts` (`trendTotals`, `categoryTrend`, `defaultSelection`, `singleCapped`), with `ledgerTrend` and `categoryTrendFor` in `src/ledger-service.ts` doing the reads. `pieSlices` never folds a capped category into Other. The only UI-side helper is `categoryColors()` (`apps/web/src/chart-colors.ts`, which slot a category is drawn in), with its own test.
 
 ### 7. Imports and deduplication
 - Each import (xlsx, csv, scrape, JSON migration) creates an **import batch** row: source, file name, file SHA-256, billing month, statement-total checks, row count (`importBatch` in `src/db/imports.ts`).
@@ -196,7 +198,7 @@ Source of truth: `src/db/migrations/001_initial.sql` and later numbered files.
 | `import_batches` | One row per import or scrape | `id`, `source` (xlsx/csv/scraper/json-migration), `file_name`, `file_sha256`, `billing_month`, `checks_json`, `tx_count`, `created_at` | `UNIQUE(file_sha256)` where not null | SQLite |
 | `transactions` | Every card transaction | `id` (stable hash, see §7), `billing_month`, `position` (order in the statement), `date`, `merchant`, `normalized_merchant`, `amount`, `currency`, `original_amount`, `original_currency`, `type`, `installment_number`, `installment_total`, `sector`, `memo`, `card`, `source`, `import_batch_id` → batches, `category_override`, `description_override`, `override_source` (manual/agent), `updated_at`, `missing_since_batch_id` → batches (migration 002), `ledger_month` (migration 005) | PK `id`; index (`billing_month`, `position`), (`normalized_merchant`), (`ledger_month`) | SQLite |
 | `pending_charges` (M6, migration 005) | Charges not billed yet, from the latest scrape | `id` (meaningful only until the next scrape), `import_batch_id` → the scrape, `ledger_month`, `date`, `merchant`, `normalized_merchant`, `amount`, `currency`, `original_amount`, `original_currency`, `sector`, `card` | Replaced as a whole by every scrape | SQLite |
-| `categories` | Allowed categories | `id`, `name`, `created_at`, `origin` (seed/owner) | `UNIQUE(name)` | SQLite (seeded from `rules.json`, or `rules.example.json` on a fresh clone) |
+| `categories` | Allowed categories | `id`, `name`, `created_at`, `origin` (seed/owner), `system` (migration 003), `monthly_cap` (M7, migration 008: ₪ per month, NULL = none, `CHECK > 0`; the by-hand bucket can't have one, checked in `setCaps()`) | `UNIQUE(name)` | SQLite (seeded from `rules.json`, or `rules.example.json` on a fresh clone; caps are in the `rules.json` backup) |
 | `merchant_rules` | Exact merchant → category | `id`, `merchant`, `normalized_merchant`, `category_id` → categories, `created_from` (seed/approve/manual), `created_at` | `UNIQUE(normalized_merchant)` | SQLite. `npm run export` writes a gitignored `rules.json` backup |
 | `cal_rules` (migration 007) | Cal sector (ענף) → category, used when no merchant rule matches | `id`, `sector`, `category_id` → categories, `created_at` | `UNIQUE(sector)` | SQLite. Set on the Rules page (`GET`/`PUT /api/cal-rules`); included in the `rules.json` backup |
 | `agent_runs` | One agent execution | `id`, `billing_month`, `model`, `stopped_by`, `iterations`, `input_tokens`, `output_tokens`, `created_at` | | SQLite |
@@ -250,6 +252,7 @@ erDiagram
     int id PK
     text name UK
     text origin
+    real monthly_cap "M7, NULL = no cap"
   }
   merchant_rules {
     int id PK

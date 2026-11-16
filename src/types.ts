@@ -51,6 +51,8 @@ export interface RulesFile {
   rules: Rule[];
   /** Optional so older rules.json files (and rules.example.json) still load. */
   calRules?: CalRule[];
+  /** Monthly caps by category name (M7). Only in the rules.json backup; loadRules() leaves it out. */
+  caps?: Record<string, number>;
 }
 
 export interface CategorizedTransaction extends Transaction {

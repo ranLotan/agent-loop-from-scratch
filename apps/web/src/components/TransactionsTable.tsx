@@ -43,10 +43,11 @@ export function TransactionsTable({ transactions, monthColumn, showBilled, editi
               {monthColumn && <td className="num">{monthColumn === "ledgerMonth" ? t.ledgerMonth : isPending(t) ? "–" : t.billingMonth}</td>}
               <td className="num">{t.date}</td>
               <td dir="auto">
-                {t.descriptionOverride ?? t.merchant}
+                {/* The bank's merchant name stays the main line; my description is a note under it, in its own color. */}
+                {t.merchant}
                 {t.descriptionOverride && (
-                  <div className="sub" dir="auto">
-                    {t.merchant}
+                  <div className="description-note" dir="auto">
+                    {t.descriptionOverride}
                   </div>
                 )}
                 {/* Why a July purchase shows up in September: payment 3 counts in purchase month + 2. */}

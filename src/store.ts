@@ -149,6 +149,8 @@ export const listCategories = () => rulesDb.listCategories(db());
 export const addCategory = (name: string) => rulesDb.addCategory(db(), name);
 export const renameCategory = (id: number, name: string) => rulesDb.renameCategory(db(), id, name);
 export const deleteCategory = (id: number) => rulesDb.deleteCategory(db(), id);
+export const listCaps = () => rulesDb.listCaps(db());
+export const setCaps = (caps: { id: number; cap: number | null }[]) => rulesDb.setCaps(db(), caps);
 
 /** Long-term memory: human-approved notes the agent reads on every run. Gitignored. */
 // MEMORY_PATH lets tests use a temp file instead of your real notes.

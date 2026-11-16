@@ -4,7 +4,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import type { Transaction } from "../types";
 import { inTransaction, openDb, runMigrations } from "./index";
-import { addCategories, deleteCategory, listCalRules, listCategories, loadRules, renameCategory, setCalRule } from "./rules";
+import {
+  addCategories, deleteCategory, formatRulesFile, listCalRules, listCaps, listCategories, loadRules, renameCategory, setCalRule, setCaps,
+} from "./rules";
 import { listMonths, loadTransactions, upsertTransactions } from "./transactions";
 
 const FULL: Transaction = {
@@ -133,4 +135,35 @@ test("Cal rules: every seen sector listed with its count; set, change and remove
   setCalRule(db, "תיירות", null);
   assert.equal(listCalRules(db).find((r) => r.sector === "תיירות")!.category, null);
   deleteCategory(db, trips.id); // no longer in use
+});
+
+test("monthly caps (M7): set, change, remove; validation is all or nothing", () => {
+  const db = openDb(":memory:");
+  addCategories(db, ["מזון", "ילדים"], "owner");
+  const id = (name: string) => listCategories(db).find((c) => c.name === name)!.id;
+  assert.ok(listCategories(db).every((c) => c.cap === null), "existing categories start with no cap");
+
+  setCaps(db, [{ id: id("מזון"), cap: 1000 }, { id: id("ילדים"), cap: 1500.456 }]);
+  assert.deepEqual(listCaps(db), [{ category: "מזון", cap: 1000 }, { category: "ילדים", cap: 1500.46 }]);
+
+  setCaps(db, [{ id: id("מזון"), cap: null }]);
+  assert.deepEqual(listCaps(db), [{ category: "ילדים", cap: 1500.46 }], "null removes the cap");
+
+  for (const bad of [0, -5, Number.NaN, Infinity, "100" as unknown as number]) {
+    assert.throws(() => setCaps(db, [{ id: id("מזון"), cap: 50 }, { id: id("ילדים"), cap: bad }]), /above 0/);
+  }
+  assert.throws(() => setCaps(db, [{ id: 9999, cap: 10 }]), /No category 9999/);
+  const byHand = listCategories(db).find((c) => c.system)!;
+  assert.throws(() => setCaps(db, [{ id: byHand.id, cap: 10 }]), /built in/);
+  assert.deepEqual(listCaps(db), [{ category: "ילדים", cap: 1500.46 }], "the failed calls changed nothing (מזון stayed uncapped)");
+
+  renameCategory(db, id("ילדים"), "ילדים – פנאי");
+  assert.equal(listCategories(db).find((c) => c.name === "ילדים – פנאי")!.cap, 1500.46, "a rename keeps the cap");
+  assert.throws(() => db.prepare("UPDATE categories SET monthly_cap = 0 WHERE name = 'מזון'").run(), /CHECK/, "the schema refuses it too");
+});
+
+test("rules.json backup carries the caps", () => {
+  const text = formatRulesFile({ categories: ["a", "b"], rules: [], calRules: [], caps: { a: 1000 } });
+  assert.deepEqual(JSON.parse(text).caps, { a: 1000 });
+  assert.deepEqual(JSON.parse(formatRulesFile({ categories: [], rules: [] })).caps, {});
 });

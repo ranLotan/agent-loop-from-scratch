@@ -14,7 +14,8 @@ import type { AppliedAnswer, FlagAnswer } from "../../../src/agent/apply";
 import type { Answer } from "../../../src/agent/review";
 import type { AgentRunResult } from "../../../src/agent/service";
 import type { ManualEntry, NewManualEntry } from "../../../src/db/manual";
-import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
+import type { LedgerTrend, MonthLedger, MonthStatus } from "../../../src/ledger-service";
+import type { CategoryTrend } from "../../../src/trends";
 import type { PendingCharge } from "../../../src/db/pending";
 import type { FlagRow, ProposalWithCharges, RunRow } from "../../../src/db/proposals";
 import type { DefinitionEdit, MonthChange, NewDefinition } from "../../../src/db/recurring";
@@ -71,7 +72,11 @@ export interface Deps {
   updateManualEntry(id: number, edit: Partial<NewManualEntry>): ManualEntry;
   deleteManualEntry(id: number): void;
   monthLedger(month: string): MonthLedger;
-  ledgerTrend(endMonth: string, n: number): TrendPoint[];
+  ledgerTrend(endMonth: string, n: number): LedgerTrend;
+  // M7: monthly caps
+  setCaps(caps: { id: number; cap: number | null }[]): CategoryRow[];
+  /** `categories` null = the default selection (the capped categories). */
+  categoryTrend(endMonth: string, n: number, categories: string[] | null): CategoryTrend;
   monthStatus(month: string): MonthStatus;
 }
 
@@ -406,6 +411,24 @@ export function createApp(deps: Deps) {
     if (!id || !name) return;
     res.json(deps.renameCategory(id, name));
   });
+  // PUT /api/categories/caps { caps: [{ id, cap }] }: cap null removes it (M7). Shapes are checked here;
+  // the rules (cap > 0, a known id, not the by-hand bucket) are the core's too, so they hold for every caller.
+  app.put("/api/categories/caps", (req, res) => {
+    const caps: unknown = req.body?.caps;
+    const valid =
+      Array.isArray(caps) &&
+      caps.length <= 500 &&
+      caps.every(
+        (c) =>
+          typeof c === "object" && c !== null && Number.isInteger(c.id) && c.id > 0 &&
+          (c.cap === null || (typeof c.cap === "number" && Number.isFinite(c.cap) && c.cap > 0)),
+      );
+    if (!valid) {
+      res.status(400).json({ error: "caps must be a list of { id, cap }, with cap a number above 0, or null for no cap" });
+      return;
+    }
+    res.json(deps.setCaps((caps as { id: number; cap: number | null }[]).map((c) => ({ id: c.id, cap: c.cap }))));
+  });
   app.delete("/api/categories/:id", (req, res) => {
     const id = idOf(req.params.id, res);
     if (!id) return;
@@ -522,6 +545,24 @@ export function createApp(deps: Deps) {
       return;
     }
     res.json(deps.ledgerTrend(end, n));
+  });
+  // GET /api/ledger/category-trend?end=2026-11&n=6&cat=מזון&cat=חשבונות (M7).
+  // No cat = the default selection (the capped categories); a single empty cat= = nothing selected.
+  app.get("/api/ledger/category-trend", (req, res) => {
+    const end = requireMonth(req.query.end, res);
+    if (!end) return;
+    const n = req.query.n === undefined ? 6 : Number(req.query.n);
+    if (!Number.isInteger(n) || n < 1 || n > 24) {
+      res.status(400).json({ error: "n must be a whole number from 1 to 24" });
+      return;
+    }
+    const raw = req.query.cat;
+    const list: unknown[] | null = raw === undefined ? null : Array.isArray(raw) ? raw : [raw];
+    if (list && (list.length > 50 || !list.every((c) => typeof c === "string" && c.length <= 100))) {
+      res.status(400).json({ error: "cat must be up to 50 category names" });
+      return;
+    }
+    res.json(deps.categoryTrend(end, n, list && (list as string[]).filter((c) => c.trim() !== "")));
   });
   app.get("/api/months/:month/status", (req, res) => {
     const month = requireMonth(req.params.month, res);

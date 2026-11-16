@@ -14,7 +14,9 @@ import type { Summary } from "../../../src/report";
 import type { CategorizedTransaction } from "../../../src/types";
 import type { ManualEntry } from "../../../src/db/manual";
 import type { LedgerEntry, LedgerSummary, PieSlice } from "../../../src/ledger";
-import type { MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
+import type { LedgerTrend, MonthLedger, MonthStatus, TrendPoint } from "../../../src/ledger-service";
+import type { CapUsage } from "../../../src/caps";
+import type { CategoryTrend, TrendTotals } from "../../../src/trends";
 
 export type { FetchImport, ImportBatch, Job, StatementImport };
 
@@ -142,7 +144,15 @@ export const api = {
 
   // M6: the ledger. These return finished numbers; the pages only display them.
   ledger: (month: string) => request<MonthLedger>(`/months/${month}/ledger`),
-  trend: (end: string, n = 6) => request<TrendPoint[]>(`/ledger/trend?end=${end}&n=${n}`),
+  trend: (end: string, n = 6) => request<LedgerTrend>(`/ledger/trend?end=${end}&n=${n}`),
+  /** M7. `categories` null = the default selection (the capped categories); [] = nothing selected. */
+  categoryTrend: (end: string, n: number, categories: string[] | null) => {
+    const query = new URLSearchParams({ end, n: String(n) });
+    if (categories) (categories.length ? categories : [""]).forEach((c) => query.append("cat", c));
+    return request<CategoryTrend>(`/ledger/category-trend?${query}`);
+  },
+  /** M7: cap null removes it. Every row in one call, all or nothing. */
+  setCaps: (caps: { id: number; cap: number | null }[]) => request<CategoryRow[]>("/categories/caps", json("PUT", { caps })),
   status: (month: string) => request<MonthStatus>(`/months/${month}/status`),
   confirmMonth: (id: number, month: string, amount: number) =>
     request<unknown>(`/recurring/${id}/occurrences/${month}/confirm`, json("POST", { amount })),
@@ -168,6 +178,7 @@ export type RecurringInput = Pick<RecurringDefinition, "name" | "kind" | "amount
 };
 
 export type { LedgerEntry, LedgerSummary, ManualEntry, MonthLedger, MonthStatus, PieSlice, TrendPoint };
+export type { CapUsage, CategoryTrend, LedgerTrend, TrendTotals };
 /** What the one-time form sends. */
 export type ManualEntryInput = Pick<ManualEntry, "date" | "name" | "kind" | "amount"> & { category?: string | null; note?: string | null };
 

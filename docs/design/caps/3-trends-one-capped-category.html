@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One capped category</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Heebo:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#161616}
+a{color:#e6e6e6}a:hover{color:#ffffff}
+td,th{border-bottom:1px solid #2c2c2c;padding:9px 10px;text-align:right;white-space:nowrap}
+th{font-weight:700;font-size:13px;color:#d4d4d4}
+.chip{display:inline-flex;align-items:center;gap:8px;background:#1f1f1f;border:1px solid #3a3a3a;border-radius:999px;padding:6px 6px 6px 12px;font-size:14px}
+.chip button{background:none;border:0;color:#a3a3a3;font:inherit;width:28px;height:28px;border-radius:999px;cursor:pointer}
+.chip button:hover{background:#333;color:#fff}
+</style>
+</head>
+<body>
+<div style="box-sizing: border-box; min-height: 960px; background: #161616; color: #e6e6e6; font-family: Inter, Heebo, system-ui, sans-serif; padding: 40px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 24px; font-weight: 700">Spending by category</h2>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 18px; background: #1c1c1c; border: 1px solid #2c2c2c; border-radius: 12px">
+<span style="font-size: 13px; color: #a3a3a3">Show</span>
+<span class="chip"><span aria-hidden="true" style="width: 10px; height: 10px; background: #22a046"></span><span dir="auto">מזון וקניות בסופר</span><button aria-label="Remove מזון וקניות בסופר">✕</button></span>
+<button style="background: none; border: 1px dashed #4a4a4a; color: #d4d4d4; border-radius: 999px; font: inherit; font-size: 14px; min-height: 40px; padding: 0 14px; cursor: pointer">+ Add category</button>
+<button style="background: none; border: 0; color: #93c5fd; font: inherit; font-size: 14px; min-height: 40px; padding: 0 8px; cursor: pointer; text-decoration: underline">All categories</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #d4d4d4">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #4ade80"></span>Expenses, under cap</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #f87171"></span>Expenses, over cap</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 10px; height: 10px; border: 2px solid #a3a3a3; box-sizing: border-box; background: #262626"></span>Cap ₪1,000</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+<svg viewBox="0 0 760 250" width="760" height="250" role="img" aria-label="Food and supermarket spending vs its ₪1,000 cap per month; values in the table below" style="flex: 0 1 760px; max-width: 100%; height: auto">
+<line x1="30" y1="220" x2="750" y2="220" stroke="#3a3a3a"></line>
+<g font-family="Inter, Heebo, sans-serif" font-size="11" text-anchor="middle">
+<rect x="60" y="73" width="22" height="147" fill="#4ade80"></rect><rect x="88" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="71" y="64" fill="#e6e6e6">980</text><text x="85" y="238" fill="#a3a3a3">2026-06</text>
+<rect x="180" y="52" width="22" height="168" fill="#f87171"></rect><rect x="208" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="191" y="43" fill="#f87171" font-weight="700">1,120</text><text x="205" y="238" fill="#a3a3a3">2026-07</text>
+<rect x="300" y="89" width="22" height="131" fill="#4ade80"></rect><rect x="328" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="311" y="80" fill="#e6e6e6">870</text><text x="325" y="238" fill="#a3a3a3">2026-08</text>
+<rect x="420" y="64" width="22" height="156" fill="#f87171"></rect><rect x="448" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="431" y="55" fill="#f87171" font-weight="700">1,040</text><text x="445" y="238" fill="#a3a3a3">2026-09</text>
+<rect x="540" y="106" width="22" height="114" fill="#4ade80"></rect><rect x="568" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="551" y="97" fill="#e6e6e6">760</text><text x="565" y="238" fill="#a3a3a3">2026-10</text>
+<rect x="660" y="156" width="22" height="64" fill="#4ade80"></rect><rect x="688" y="70" width="22" height="150" fill="#262626" stroke="#a3a3a3" stroke-width="2"></rect>
+<text x="671" y="147" fill="#e6e6e6">427</text><text x="685" y="238" fill="#e6e6e6" font-weight="700">2026-11</text>
+</g>
+</svg>
+<div style="flex: 1 1 280px; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; background: #1c1c1c; border: 1px solid #2c2c2c; border-radius: 12px">
+<span style="font-size: 13px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.06em">Total · 6 months</span>
+<div style="display: flex; justify-content: space-between; gap: 12px"><span>Expenses</span><span style="font-weight: 600">₪5,196.72</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><span>Cap (6 × ₪1,000)</span><span style="font-weight: 600">₪6,000.00</span></div>
+<div style="height: 1px; background: #2c2c2c"></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline"><span style="font-weight: 700">Under cap by</span><span style="font-size: 22px; font-weight: 700; color: #4ade80">₪803.28</span></div>
+<span style="font-size: 13px; color: #a3a3a3">Over the cap in 2 of 6 months (Jul, Sep)</span>
+</div>
+</div>
+<details open>
+<summary style="cursor: pointer; font-size: 15px; padding: 6px 0">As a table</summary>
+<div style="overflow-x: auto; margin-top: 8px">
+<table style="width: 100%; border-collapse: collapse; font-size: 15px">
+<thead><tr><th style="text-align: center">Month</th><th>Expenses</th><th>Cap</th><th>Left / over</th></tr></thead>
+<tbody>
+<tr><td style="text-align: center">2026-06</td><td>₪980.00</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #4ade80">₪20.00 left</td></tr>
+<tr><td style="text-align: center">2026-07</td><td style="color: #f87171">₪1,120.00</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #f87171">₪120.00 over</td></tr>
+<tr><td style="text-align: center">2026-08</td><td>₪870.00</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #4ade80">₪130.00 left</td></tr>
+<tr><td style="text-align: center">2026-09</td><td style="color: #f87171">₪1,040.00</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #f87171">₪40.00 over</td></tr>
+<tr><td style="text-align: center">2026-10</td><td>₪760.00</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #4ade80">₪240.00 left</td></tr>
+<tr><td style="text-align: center">2026-11</td><td>₪426.72</td><td style="color: #a3a3a3">₪1,000.00</td><td style="color: #4ade80">₪573.28 left</td></tr>
+<tr style="background: #1f1f1f"><td style="text-align: center; font-weight: 700">Total</td><td style="font-weight: 700">₪5,196.72</td><td style="font-weight: 700">₪6,000.00</td><td style="font-weight: 700; color: #4ade80">₪803.28 left</td></tr>
+</tbody>
+</table>
+</div>
+</details>
+</div>
+</div>
+</body>
+</html>

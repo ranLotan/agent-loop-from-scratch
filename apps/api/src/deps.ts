@@ -5,7 +5,7 @@ import { answerFlag, applyAnswer } from "../../../src/agent/apply";
 import { getClient, MODEL } from "../../../src/agent/client";
 import { runAgent } from "../../../src/agent/service";
 import { fetchMonth, importStatement } from "../../../src/imports";
-import { ledgerTrend, monthLedger, monthStatus } from "../../../src/ledger-service";
+import { categoryTrendFor, ledgerTrend, monthLedger, monthStatus } from "../../../src/ledger-service";
 import * as store from "../../../src/store";
 import type { Deps } from "./app";
 
@@ -53,5 +53,7 @@ export function realDeps(): Deps {
     monthLedger,
     ledgerTrend,
     monthStatus,
+    setCaps: store.setCaps,
+    categoryTrend: categoryTrendFor,
   };
 }

@@ -106,7 +106,7 @@ export function ProposalCard({ proposal: p, categories, onAnswered }: ProposalCa
         <div className="actions">
           <select value={category} onChange={(e) => setCategory(e.target.value)} dir="auto" disabled={busy}>
             {categories.map((name) => (
-              <option key={name} value={name}>
+              <option key={name} value={name} dir="auto">
                 {name}
               </option>
             ))}
@@ -194,7 +194,7 @@ function Charges({ charges, month, choice }: { charges: ProposalCharge[]; month:
                   aria-label={`Category for the ${c.date} charge`}
                 >
                   {choice.categories.map((name) => (
-                    <option key={name} value={name}>
+                    <option key={name} value={name} dir="auto">
                       {name}
                     </option>
                   ))}

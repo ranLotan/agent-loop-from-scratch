@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Expenses by category</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Heebo:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0;background:#161616}
+a{color:#e6e6e6}a:hover{color:#ffffff}
+.capbtn{position:relative;background:none;border:0;padding:6px 8px;border-radius:6px;font:inherit;cursor:default;display:inline-flex;flex-direction:column;align-items:flex-end;gap:4px}
+.capbtn:hover,.capbtn:focus-visible{background:#262626;outline:none}
+.tip{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:5;white-space:nowrap;background:#0d0d0d;border:1px solid #3a3a3a;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5;text-align:left;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.capbtn:hover .tip,.capbtn:focus-visible .tip,.tip.show{display:block}
+td,th{border-bottom:1px solid #2c2c2c}
+</style>
+</head>
+<body>
+<div style="box-sizing: border-box; min-height: 780px; background: #161616; color: #e6e6e6; font-family: Inter, Heebo, system-ui, sans-serif; padding: 40px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #a3a3a3">Dashboard · November 2026</span>
+<h2 style="margin: 0; font-size: 26px; font-weight: 700">Expenses by category</h2>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<span style="font-size: 13px; padding: 6px 12px; border-radius: 999px; background: #12301d; color: #6ee7a0">2 caps on track</span>
+<span style="font-size: 13px; padding: 6px 12px; border-radius: 999px; background: #3a1616; color: #fca5a5">1 cap exceeded</span>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; ">
+<svg viewBox="0 0 100 100" width="230" height="230" role="img" aria-label="Pie chart of November expenses by category" style="flex: 0 0 auto">
+<g transform="rotate(-90 50 50)" fill="none" stroke-width="50">
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#3a86e8" stroke-dasharray="47.8 100" stroke-dashoffset="0"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#e0592a" stroke-dasharray="25.2 100" stroke-dashoffset="-47.8"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#1a9e74" stroke-dasharray="10.8 100" stroke-dashoffset="-73"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#d38b0a" stroke-dasharray="5.8 100" stroke-dashoffset="-83.8"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#d6518b" stroke-dasharray="4.5 100" stroke-dashoffset="-89.6"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#22a046" stroke-dasharray="2.5 100" stroke-dashoffset="-94.1"></circle>
+<circle cx="50" cy="50" r="25" pathLength="100" stroke="#8a8a8a" stroke-dasharray="3.4 100" stroke-dashoffset="-96.6"></circle>
+</g>
+</svg>
+<div style="flex: 999 1 560px; min-width: 0; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 15px">
+<thead>
+<tr style="font-size: 14px">
+<th style="text-align: center; padding: 10px 8px; font-weight: 700">Category</th>
+<th style="text-align: right; padding: 10px 8px; font-weight: 700">Cap</th>
+<th style="text-align: right; padding: 10px 8px; font-weight: 700">Amount</th>
+<th style="text-align: right; padding: 10px 8px; font-weight: 700">Share</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #3a86e8"></span><a href="#" dir="auto">דיור</a></span></td>
+<td style="padding: 10px 8px; text-align: right; color: #737373">—</td>
+<td style="padding: 10px 8px; text-align: right">₪8,200.00</td>
+<td style="padding: 10px 8px; text-align: right">47.8%</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #e0592a"></span><a href="#" dir="auto">ילדים – מסגרות וחינוך</a></span></td>
+<td style="padding: 10px 8px; text-align: right; color: #737373">—</td>
+<td style="padding: 10px 8px; text-align: right">₪4,309.90</td>
+<td style="padding: 10px 8px; text-align: right">25.2%</td>
+</tr>
+<tr style="background: #1f1616">
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #1a9e74"></span><a href="#" dir="auto">ילדים – פנאי וציוד</a></span></td>
+<td style="padding: 4px 8px; text-align: right">
+<button class="capbtn" aria-label="Cap ₪1,500, over by ₪356.00">
+<span style="color: #f87171; font-weight: 600">₪1,500</span>
+<span aria-hidden="true" style="display: block; width: 72px; height: 4px; border-radius: 2px; background: #f87171"></span>
+<span class="tip show"><span style="color: #a3a3a3">Spent ₪1,856.00 of ₪1,500</span><br><span style="color: #f87171; font-weight: 600">Over by ₪356.00</span></span>
+</button>
+</td>
+<td style="padding: 10px 8px; text-align: right; color: #f87171; font-weight: 600">₪1,856.00</td>
+<td style="padding: 10px 8px; text-align: right">10.8%</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #d38b0a"></span><a href="#" dir="auto">חשבונות</a></span></td>
+<td style="padding: 4px 8px; text-align: right">
+<button class="capbtn" aria-label="Cap ₪1,200, ₪209.01 left">
+<span style="color: #4ade80; font-weight: 600">₪1,200</span>
+<span aria-hidden="true" style="display: block; width: 72px; height: 4px; border-radius: 2px; background: #2c2c2c"><span style="display: block; width: 83%; height: 4px; border-radius: 2px; background: #4ade80"></span></span>
+<span class="tip"><span style="color: #a3a3a3">Spent ₪990.99 of ₪1,200</span><br><span style="color: #4ade80; font-weight: 600">₪209.01 left to spend</span></span>
+</button>
+</td>
+<td style="padding: 10px 8px; text-align: right">₪990.99</td>
+<td style="padding: 10px 8px; text-align: right">5.8%</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #d6518b"></span><a href="#" dir="auto">דיור ואחזקת בית</a></span></td>
+<td style="padding: 10px 8px; text-align: right; color: #737373">—</td>
+<td style="padding: 10px 8px; text-align: right">₪777.90</td>
+<td style="padding: 10px 8px; text-align: right">4.5%</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #22a046"></span><a href="#" dir="auto">מזון וקניות בסופר</a></span></td>
+<td style="padding: 4px 8px; text-align: right">
+<button class="capbtn" aria-label="Cap ₪1,000, ₪573.28 left">
+<span style="color: #4ade80; font-weight: 600">₪1,000</span>
+<span aria-hidden="true" style="display: block; width: 72px; height: 4px; border-radius: 2px; background: #2c2c2c"><span style="display: block; width: 43%; height: 4px; border-radius: 2px; background: #4ade80"></span></span>
+<span class="tip"><span style="color: #a3a3a3">Spent ₪426.72 of ₪1,000</span><br><span style="color: #4ade80; font-weight: 600">₪573.28 left to spend</span></span>
+</button>
+</td>
+<td style="padding: 10px 8px; text-align: right">₪426.72</td>
+<td style="padding: 10px 8px; text-align: right">2.5%</td>
+</tr>
+<tr>
+<td style="padding: 10px 8px"><span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 10px; height: 10px; background: #8a8a8a"></span>Other</span><div dir="auto" style="font-size: 12px; color: #a3a3a3; margin-top: 4px">Uncategorized · בריאות ורווחה · תקשורת ומנויים · ביטוחים ופיננסים · פנאי ובילויים</div></td>
+<td style="padding: 10px 8px; text-align: right; color: #737373">—</td>
+<td style="padding: 10px 8px; text-align: right">₪580.80</td>
+<td style="padding: 10px 8px; text-align: right">3.4%</td>
+</tr>
+<tr>
+<td style="padding: 12px 8px; text-align: center; font-weight: 700">Total</td>
+<td style="padding: 12px 8px; text-align: right; color: #a3a3a3; font-size: 13px">₪3,700 capped</td>
+<td style="padding: 12px 8px; text-align: right; font-weight: 700">₪17,142.31</td>
+<td style="padding: 12px 8px"></td>
+</tr>
+</tbody>
+</table>
+<p style="margin: 12px 0 0; font-size: 13px; color: #a3a3a3">Hover or focus a cap to see what's left. Capped categories always get their own row and slice, never “Other”.</p>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>

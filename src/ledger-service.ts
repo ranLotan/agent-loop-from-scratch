@@ -5,6 +5,7 @@ import { categorize, MANUAL_CATEGORY, validateRules } from "./categorize";
 import { buildLedger, cardState, summarizeLedger, type CardStatus, type LedgerEntry, type LedgerSummary } from "./ledger";
 import { shiftMonth } from "./normalize";
 import * as store from "./store";
+import { categoryTrend, trendTotals, type CategoryTrend, type TrendTotals } from "./trends";
 import type { CategorizedTransaction } from "./types";
 
 export interface MonthLedger {
@@ -29,7 +30,7 @@ export function monthLedger(month: string): MonthLedger {
     occurrences: store.recurringMonth(month).occurrences,
     oneOffs: store.listManualEntries(month),
   });
-  return { month, entries, summary: summarizeLedger(entries) };
+  return { month, entries, summary: summarizeLedger(entries, store.listCaps()) };
 }
 
 export interface TrendPoint {
@@ -41,12 +42,28 @@ export interface TrendPoint {
   awaiting: number;
 }
 
-/** Income, expenses and Net for the n months ending with `endMonth`, oldest first. */
-export function ledgerTrend(endMonth: string, n = 6): TrendPoint[] {
-  return Array.from({ length: n }, (_, i) => shiftMonth(endMonth, i - n + 1)).map((month) => {
+export interface LedgerTrend {
+  points: TrendPoint[];
+  /** Period sums and monthly averages (M7), for the summary card and the table's Total row. */
+  totals: TrendTotals;
+}
+
+/** The n months ending with `endMonth`, oldest first. */
+const periodMonths = (endMonth: string, n: number) => Array.from({ length: n }, (_, i) => shiftMonth(endMonth, i - n + 1));
+
+/** Income, expenses and Net for the n months ending with `endMonth`, oldest first, with the period's totals. */
+export function ledgerTrend(endMonth: string, n = 6): LedgerTrend {
+  const points = periodMonths(endMonth, n).map((month) => {
     const { income, expenses, net, awaiting } = monthLedger(month).summary;
     return { month, income, expenses, net, awaiting: awaiting.count };
   });
+  return { points, totals: trendTotals(points) };
+}
+
+/** Spending per category over the n months ending with `endMonth` (M7). `categories` null = the default selection. */
+export function categoryTrendFor(endMonth: string, n: number, categories: string[] | null): CategoryTrend {
+  const months = periodMonths(endMonth, n).map((month) => ({ month, byCategory: monthLedger(month).summary.byCategory }));
+  return categoryTrend(months, categories, store.listCaps());
 }
 
 export interface MonthStatus {

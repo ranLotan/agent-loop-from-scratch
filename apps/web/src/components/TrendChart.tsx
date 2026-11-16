@@ -8,6 +8,10 @@ const TOP = 28; // room for the Net labels above the bars
 const BOTTOM = 24; // room for the month labels
 const BAR = 18;
 
+/** -16218.9 → "-₪16.2K": a short Net label for long periods. */
+const compactDelta = (amount: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "ILS", notation: "compact", maximumFractionDigits: 1, signDisplay: "exceptZero" }).format(amount);
+
 /**
  * Income vs expenses per month, two bars side by side, one shared axis from zero (never two scales).
  * Net is written above each pair instead of drawn as a third series. Scaling to the tallest bar is layout,
@@ -39,7 +43,8 @@ export function TrendChart({ points, current }: { points: TrendPoint[]; current:
             {bar(p.income, cx - BAR - 1, "var(--series-1)", "income")}
             {bar(p.expenses, cx + 1, "var(--series-2)", "expenses")}
             <text x={cx} y={TOP - 10} textAnchor="middle" fontWeight={p.month === current ? 700 : 400}>
-              {formatDelta(p.net)}
+              {/* M7: 9 or 12 months leave no room for "-₪16,218.90"; "-₪16.2K" fits, and the table has the exact Net. */}
+              {points.length > 6 ? compactDelta(p.net) : formatDelta(p.net)}
               {p.awaiting > 0 ? "*" : ""}
             </text>
             <text x={cx} y={H - 6} textAnchor="middle" fontWeight={p.month === current ? 700 : 400}>
